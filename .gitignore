@@ -1,0 +1,33 @@
+# Biblioteca UPH - secretos y archivos locales
+/config/mail.local.php
+/config/db.local.php
+.env
+.env.*
+!.env.example
+
+# Dependencias (instalar con Composer)
+/vendor/
+
+# IDE
+.vscode/
+
+# Logs y temporales
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Archivos locales/servidor
+Thumbs.db
+.DS_Store
+php_errorlog
+
+# Respaldos y archivos comprimidos
+*.zip
+*.rar
+*.sql.gz
+
+# Backups SQL con datos
+*bkp*.sql
+*backup*.sql
+*dump*.sql

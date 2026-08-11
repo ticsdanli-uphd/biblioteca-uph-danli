@@ -1,0 +1,52 @@
+BIBLIOTECA UPH - GITHUB / GITHUB PAGES
+=======================================
+
+IMPORTANTE
+----------
+El sistema completo usa PHP + MySQL y necesita un servidor con PHP y MySQL.
+GitHub Pages SOLO publica contenido estatico (HTML/CSS/JS). Por eso:
+
+- docs/index.html se puede publicar con GitHub Pages.
+- login.php, dashboard.php, libros, prestamos, reservas, reportes, etc. requieren PHP/MySQL.
+
+SUBIR A GITHUB DESDE VS CODE
+----------------------------
+1. Abre esta carpeta en VS Code.
+2. Abre Terminal > New Terminal.
+3. Ejecuta:
+
+   git init
+   git branch -M main
+   git remote add origin https://github.com/TU-USUARIO/biblioteca-uph.git
+   git add .
+   git status
+   git commit -m "Sistema Biblioteca UPH Danli"
+   git push -u origin main
+
+Si origin ya existe, usa:
+
+   git remote set-url origin https://github.com/TU-USUARIO/biblioteca-uph.git
+
+GITHUB PAGES
+------------
+En GitHub: Settings > Pages > Build and deployment > Deploy from a branch.
+Branch: main
+Folder: /docs
+Guardar.
+
+La pagina estatica quedara en:
+https://TU-USUARIO.github.io/biblioteca-uph/
+
+SEGURIDAD
+---------
+No subir contrasenas SMTP ni archivos locales de credenciales.
+Usa config/mail.local.php o variables de entorno para las claves SMTP.
+El .gitignore ya excluye config/mail.local.php, config/db.local.php y .env.
+
+SISTEMA LOCAL XAMPP
+-------------------
+1. Crear la base de datos importando database/biblioteca_uph.sql.
+2. Configurar config/db.php segun tu MySQL local.
+3. Ejecutar composer install.
+4. Configurar el correo en config/mail.local.php si necesitas SMTP.
+5. Abrir http://localhost/biblioteca/

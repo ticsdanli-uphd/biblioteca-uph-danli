@@ -1,0 +1,10 @@
+BIBLIOTECA UPH DANLI - INSTALACION RAPIDA
+
+1. Copie la carpeta a C:\xampp\htdocs\biblioteca
+2. Inicie Apache y MySQL.
+3. Cree/importa la base de datos desde database/biblioteca_uph.sql.
+4. Para una base existente use database/migracion_roles_alumno_docente.sql.
+5. Revise config/db.php.
+6. Revise config/mail.php.
+7. Abra http://localhost/biblioteca/
+8. Cree el primer administrador con setup_admin.php si la base no tiene usuarios.
