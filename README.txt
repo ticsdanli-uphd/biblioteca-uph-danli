@@ -1,19 +1,13 @@
-BIBLIOTECA UPH - RESPONSIVE GLOBAL
+# Flujo de solicitudes de préstamo - Biblioteca UPH Danlí
 
-1. Copie assets/css/responsive.css a biblioteca/assets/css/
-2. Copie assets/js/responsive.js a biblioteca/assets/js/
-3. Copie tools/instalar_responsive.php a biblioteca/tools/
-4. Abra http://localhost/biblioteca/tools/instalar_responsive.php
-5. Pruebe el sistema.
-6. ELIMINE tools/instalar_responsive.php por seguridad.
+1. Ejecuta `sql/solicitudes_prestamo.sql` en la base de datos `biblioteca`.
+2. Reemplaza `books/prestamo.php`.
+3. Copia `admin/solicitudes_prestamo.php` y `admin/solicitud_accion.php` a `biblioteca/admin/`.
+4. Copia `usuario/mis_prestamos.php` a `biblioteca/usuario/`.
+5. En el menú administrativo agrega el enlace a `admin/solicitudes_prestamo.php`.
+6. En el menú de alumno/docente agrega `usuario/mis_prestamos.php`.
 
-El cambio se concentra en header.php porque todos los módulos del proyecto incluyen ese archivo.
+Flujo:
+Alumno/Docente -> Solicitar préstamo -> Notificación administrativa -> Aceptar -> Estado "Aprobada - pendiente de recoger" -> el alumno ve ubicación -> personal entrega -> "Marcar como prestado/entregado" -> estado "Prestado" y se crea el registro en `registro_visitas`.
 
-
-SOLUCIÓN ERROR: Table biblioteca.docentes doesn't exist
-===========================================================
-1. Si es una instalación nueva, importa biblioteca.sql.
-2. Si ya tienes una base de datos biblioteca con información, ejecuta
-   database/migracion_docentes.sql desde phpMyAdmin.
-3. login.php ya no depende de la tabla docentes para autenticar, por lo que
-   los usuarios existentes pueden iniciar sesión mientras haces la migración.
+La ubicación se toma de `bibliografia.ubicacion`.

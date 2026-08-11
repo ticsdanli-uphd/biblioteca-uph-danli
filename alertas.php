@@ -3,6 +3,25 @@
 include 'includes/session.php';
 include 'config/db.php';
 
+/*
+ * =========================================================
+ * ACCESO: SOLO ADMINISTRADOR
+ * =========================================================
+ * Las alertas de préstamos son una herramienta administrativa.
+ * Alumnos y docentes NO deben ver esta pantalla.
+ */
+$rolActual = strtolower(trim(
+    $_SESSION['role']
+    ?? $_SESSION['tipo']
+    ?? $_SESSION['rol']
+    ?? ''
+));
+
+if (!in_array($rolActual, ['admin', 'administrador'], true)) {
+    header('Location: dashboard.php');
+    exit;
+}
+
 
 // =========================================================
 // SEDE ACTUAL
@@ -232,7 +251,7 @@ endif;
 
                         <i class="fas fa-bell text-primary me-2"></i>
 
-                        Alertas de Préstamos
+                        Alertas de Préstamos - Administración
 
                     </h1>
 
