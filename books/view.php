@@ -77,16 +77,30 @@ include '../includes/header.php';
     <div class="card shadow-sm border-0">
         <div class="card-body p-4">
             <div class="row g-4">
-                <div class="col-lg-3 text-center">
-                    <?php if (!empty($book['foto'])): ?>
-                        <img src="/biblioteca/uploads/<?= rawurlencode(basename($book['foto'])) ?>"
-                             class="img-fluid rounded shadow-sm" style="max-height:320px;" alt="Portada">
-                    <?php else: ?>
-                        <div class="bg-light rounded p-5 text-muted">
-                            <i class="fas fa-book fa-4x"></i>
-                            <div class="mt-2">Sin portada</div>
+                <div class="col-lg-4">
+                    <div class="row g-3">
+                        <div class="col-6 text-center">
+                            <div class="photo-title">📕 Frontal / Portada</div>
+                            <?php $frontal = $book['foto_frontal'] ?? ($book['foto'] ?? null); ?>
+                            <?php if (!empty($frontal)): ?>
+                                <a href="../uploads/<?= rawurlencode(basename($frontal)) ?>" target="_blank">
+                                    <img src="../uploads/<?= rawurlencode(basename($frontal)) ?>" class="book-photo" alt="Portada">
+                                </a>
+                            <?php else: ?>
+                                <div class="photo-empty"><i class="fas fa-book fa-3x"></i><span>Sin foto</span></div>
+                            <?php endif; ?>
                         </div>
-                    <?php endif; ?>
+                        <div class="col-6 text-center">
+                            <div class="photo-title">📗 Trasera / Contraportada</div>
+                            <?php if (!empty($book['foto_trasera'])): ?>
+                                <a href="../uploads/<?= rawurlencode(basename($book['foto_trasera'])) ?>" target="_blank">
+                                    <img src="../uploads/<?= rawurlencode(basename($book['foto_trasera'])) ?>" class="book-photo" alt="Contraportada">
+                                </a>
+                            <?php else: ?>
+                                <div class="photo-empty"><i class="fas fa-image fa-3x"></i><span>Sin foto</span></div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="col-lg-9">
@@ -103,7 +117,7 @@ include '../includes/header.php';
                             'Edición' => $book['edicion'] ?? '',
                             'Año' => $book['anio'] ?? '',
                             'ISBN' => $book['isbn'] ?? '',
-                            'Ubicación' => $book['ubicacion'] ?? '',
+                            'Estante / nivel' => $book['ubicacion'] ?? 'No especificado',
                             'Idioma' => $book['idioma'] ?? '',
                             'Carrera' => $book['carrera_nombre'] ?? 'Todas / General',
                             'Fecha de ingreso' => !empty($book['fecha_ingreso']) ? date('d/m/Y', strtotime($book['fecha_ingreso'])) : '',
@@ -145,8 +159,10 @@ include '../includes/header.php';
                             <a href="edit.php?id=<?= $id ?>" class="btn btn-warning"><i class="fas fa-edit me-1"></i>Editar</a>
                         <?php endif; ?>
 
-                        <?php if ($disponible): ?>
-                            <a href="prestamo.php?id=<?= $id ?>" class="btn btn-primary"><i class="fas fa-book-reader me-1"></i>Registrar Préstamo</a>
+                        <?php if ($disponible && in_array(strtolower($_SESSION['role'] ?? ''), ['alumno','usuario','estudiante','student','docente','teacher','profesor'], true)): ?>
+                            <a href="prestamo.php?id=<?= $id ?>" class="btn btn-primary"><i class="fas fa-book-reader me-1"></i>Solicitar Préstamo</a>
+                        <?php elseif ($disponible && strtolower($_SESSION['role'] ?? '') === 'admin'): ?>
+                            <span class="btn btn-outline-secondary disabled"><i class="fas fa-info-circle me-1"></i>Gestión por solicitudes</span>
                         <?php elseif ($usuario_tiene_reserva): ?>
                             <button class="btn btn-secondary" disabled><i class="fas fa-bookmark me-1"></i>Ya tienes reserva</button>
                         <?php else: ?>
@@ -170,4 +186,6 @@ include '../includes/header.php';
     </div>
 </div>
 
+<style>
+.photo-title{font-weight:700;color:#1e293b;margin-bottom:8px}.book-photo{width:100%;height:300px;object-fit:contain;background:#f8fafc;border:1px solid #dee2e6;border-radius:12px;padding:6px;box-shadow:0 3px 12px rgba(0,0,0,.08)}.photo-empty{height:300px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;color:#94a3b8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}</style>
 <?php include '../includes/footer.php'; ?>

@@ -30,6 +30,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ? (int) $_POST['carrera_id']
         : null;
 
+// La carrera pertenece únicamente al perfil de alumno.
+if ($tipo === 'docente' || $tipo === 'admin') {
+    $carrera_id = null;
+}
+
 
     // ========================================================
     // VALIDACIONES
@@ -1321,10 +1326,13 @@ document.addEventListener(
             else if (valor === 'docente') {
 
                 contenedorCarrera.style.display =
-                    'block';
+                    'none';
 
                 carrera.required =
                     false;
+
+                carrera.value =
+                    '';
 
                 infoDocente.style.display =
                     'block';

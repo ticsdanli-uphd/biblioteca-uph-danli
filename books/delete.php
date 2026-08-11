@@ -15,7 +15,7 @@ if ($id <= 0) {
     exit();
 }
 
-$stmt = $conn->prepare("SELECT id, nombre, foto FROM bibliografia WHERE id=? AND sede_id=4");
+$stmt = $conn->prepare("SELECT id, nombre, foto, foto_frontal, foto_trasera FROM bibliografia WHERE id=? AND sede_id=4");
 $stmt->bind_param('i', $id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -54,10 +54,12 @@ try {
     }
     $stmt->close();
 
-    if (!empty($book['foto'])) {
-        $file = __DIR__ . '/../uploads/' . basename($book['foto']);
-        if (is_file($file)) {
-            @unlink($file);
+    foreach (['foto', 'foto_frontal', 'foto_trasera'] as $campoFoto) {
+        if (!empty($book[$campoFoto])) {
+            $file = __DIR__ . '/../uploads/' . basename($book[$campoFoto]);
+            if (is_file($file)) {
+                @unlink($file);
+            }
         }
     }
 

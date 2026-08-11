@@ -80,6 +80,27 @@ $esAlumno =
 
 
 /* =========================================================
+   SOLICITUDES PENDIENTES PARA ADMINISTRADOR
+========================================================= */
+$solicitudesPendientes = 0;
+
+if ($esAdmin && isset($conn) && $conn instanceof mysqli) {
+    $stmtPend = $conn->prepare("
+        SELECT COUNT(*) AS total
+        FROM solicitudes_prestamo
+        WHERE sede_id = 4
+          AND estado = 'pendiente'
+    ");
+
+    if ($stmtPend) {
+        $stmtPend->execute();
+        $solicitudesPendientes = (int)($stmtPend->get_result()->fetch_assoc()['total'] ?? 0);
+        $stmtPend->close();
+    }
+}
+
+
+/* =========================================================
    TEXTO DEL ROL
 ========================================================= */
 
@@ -1450,7 +1471,7 @@ if ($esAdmin) {
 
                             <a
                                 class="dropdown-item"
-                                href="/biblioteca/mis_solicitudes.php"
+                                href="/biblioteca/usuario/mis_prestamos.php"
                             >
 
                                 <i
@@ -1692,7 +1713,7 @@ if ($esAdmin) {
 
 
             <a
-                href="/biblioteca/solicitudes/list.php"
+                href="/biblioteca/admin/solicitudes_prestamo.php"
                 class="sidebar-link"
             >
 
@@ -1702,15 +1723,11 @@ if ($esAdmin) {
 
                 Solicitudes de Préstamo
 
-                <span
-                    class="badge bg-danger solicitudes-badge"
-                >
-
-                    <i
-                        class="fas fa-bell"
-                    ></i>
-
-                </span>
+                <?php if ($solicitudesPendientes > 0): ?>
+                    <span class="badge bg-danger solicitudes-badge">
+                        <?= $solicitudesPendientes ?>
+                    </span>
+                <?php endif; ?>
 
             </a>
 
@@ -1890,7 +1907,7 @@ if ($esAdmin) {
 
 
             <a
-                href="/biblioteca/mis_solicitudes.php"
+                href="/biblioteca/usuario/mis_prestamos.php"
                 class="sidebar-link"
             >
 

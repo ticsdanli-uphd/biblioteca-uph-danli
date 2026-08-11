@@ -1,1474 +1,202 @@
 <?php
-
-include '../includes/session.php';
-include '../config/db.php';
-
-
-// =====================================================
-// VERIFICAR SESIÓN
-// =====================================================
+require_once '../includes/session.php';
+require_once '../config/db.php';
 
 if (!isset($_SESSION['user_id'])) {
-
     header('Location: ../login.php');
-    exit();
-
+    exit;
 }
 
+$rol = strtolower(trim($_SESSION['role'] ?? ''));
+if (!in_array($rol, ['admin','administrador'], true)) {
+    header('Location: list.php');
+    exit;
+}
 
-// =====================================================
-// CONFIGURACIÓN
-// =====================================================
-
-// Danlí
-$sede_id = 4;
-
-$nombre_sede = 'Danli';
-
-
-// =====================================================
-// VARIABLES
-// =====================================================
-
+$sede_id = 4; // Danlí
 $error = '';
 $success = '';
 
+function guardarFoto(array $file, string $prefijo): array
+{
+    if (!isset($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return [true, null];
+    }
 
-// =====================================================
-// VERIFICAR USUARIO DE LA SESIÓN
-// =====================================================
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+        return [false, 'No se pudo recibir la imagen.'];
+    }
 
-$user_id = intval($_SESSION['user_id']);
+    if (($file['size'] ?? 0) > 5 * 1024 * 1024) {
+        return [false, 'La imagen no puede superar 5 MB.'];
+    }
 
-$stmtUsuario = $conn->prepare(
-    "SELECT id, username, role
-     FROM usuarios
-     WHERE id = ?
-     LIMIT 1"
-);
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $permitidas = ['jpg','jpeg','png','webp'];
+    if (!in_array($ext, $permitidas, true)) {
+        return [false, 'La imagen debe ser JPG, JPEG, PNG o WEBP.'];
+    }
 
-$stmtUsuario->bind_param(
-    "i",
-    $user_id
-);
+    $info = @getimagesize($file['tmp_name']);
+    if ($info === false) {
+        return [false, 'El archivo seleccionado no es una imagen válida.'];
+    }
 
-$stmtUsuario->execute();
+    $dir = __DIR__ . '/../uploads/';
+    if (!is_dir($dir) && !mkdir($dir, 0755, true)) {
+        return [false, 'No se pudo crear la carpeta de imágenes.'];
+    }
 
-$resultUsuario = $stmtUsuario->get_result();
+    $nombre = $prefijo . '_' . bin2hex(random_bytes(10)) . '.' . $ext;
+    if (!move_uploaded_file($file['tmp_name'], $dir . $nombre)) {
+        return [false, 'No se pudo guardar la imagen.'];
+    }
 
-
-// Si el usuario de sesión no existe
-if ($resultUsuario->num_rows === 0) {
-
-    $stmtUsuario->close();
-
-    session_destroy();
-
-    header('Location: ../login.php');
-    exit();
-
+    return [true, $nombre];
 }
 
+$carreras = $conn->query("SELECT id,nombre FROM carreras ORDER BY nombre");
 
-$usuarioSesion =
-    $resultUsuario->fetch_assoc();
-
-$stmtUsuario->close();
-
-
-// =====================================================
-// CARRERAS
-// =====================================================
-
-$sqlCarreras = "
-    SELECT id, nombre
-    FROM carreras
-    ORDER BY nombre ASC
-";
-
-$resultCarreras =
-    $conn->query($sqlCarreras);
-
-
-// =====================================================
-// PROCESAR FORMULARIO
-// =====================================================
+$codigo = trim($_POST['codigo'] ?? '');
+$dewey = trim($_POST['dewey'] ?? '');
+$clasificacion = trim($_POST['clasificacion'] ?? '');
+$nombre = trim($_POST['nombre'] ?? '');
+$autores = trim($_POST['autores'] ?? ($_POST['autor'] ?? ''));
+$editorial = trim($_POST['editorial'] ?? '');
+$edicion = trim($_POST['edicion'] ?? '');
+$anio = !empty($_POST['anio']) ? (int)$_POST['anio'] : null;
+$isbn = trim($_POST['isbn'] ?? '');
+$estado = trim($_POST['estado'] ?? 'Disponible');
+$estante = trim($_POST['estante'] ?? '');
+$nivel = isset($_POST['nivel_estante']) ? (int)$_POST['nivel_estante'] : -1;
+$fecha_ingreso = trim($_POST['fecha_ingreso'] ?? date('Y-m-d'));
+$idioma = trim($_POST['idioma'] ?? 'Español');
+$carrera_id = !empty($_POST['carrera_id']) ? (int)$_POST['carrera_id'] : null;
+$catalogacion = trim($_POST['catalogacion'] ?? '');
+$observaciones = trim($_POST['observaciones'] ?? '');
+$cantidad = max(1, (int)($_POST['cantidad'] ?? 1));
+$ubicacion = '';
+if (preg_match('/^[AB]-[1-5]$/', $estante) && $nivel >= 0 && $nivel <= 4) {
+    $ubicacion = 'Estante ' . $estante . ' - Nivel ' . $nivel;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-
-    // =================================================
-    // RECIBIR DATOS
-    // =================================================
-
-    $codigo =
-        trim($_POST['codigo'] ?? '');
-
-    $dewey =
-        trim($_POST['dewey'] ?? '');
-
-    $clasificacion =
-        trim($_POST['clasificacion'] ?? '');
-
-    $nombre =
-        trim($_POST['nombre'] ?? '');
-
-    $autor =
-        trim($_POST['autor'] ?? '');
-
-    $editorial =
-        trim($_POST['editorial'] ?? '');
-
-    $edicion =
-        trim($_POST['edicion'] ?? '');
-
-    $anio =
-        trim($_POST['anio'] ?? '');
-
-    $isbn =
-        trim($_POST['isbn'] ?? '');
-
-    $estado =
-        trim($_POST['estado'] ?? 'Disponible');
-
-    $ubicacion =
-        trim($_POST['ubicacion'] ?? '');
-
-    $fecha_ingreso =
-        trim($_POST['fecha_ingreso'] ?? date('Y-m-d'));
-
-    $idioma =
-        trim($_POST['idioma'] ?? '');
-
-    $carrera_id =
-        !empty($_POST['carrera_id'])
-            ? intval($_POST['carrera_id'])
-            : null;
-
-    $cantidad =
-        isset($_POST['cantidad'])
-            ? intval($_POST['cantidad'])
-            : 1;
-
-
-    // =================================================
-    // VALIDACIONES
-    // =================================================
-
-    if (
-        empty($codigo) ||
-        empty($nombre)
-    ) {
-
-        $error =
-            "El código y el nombre del libro son obligatorios.";
-
-    }
-
-
-    elseif ($cantidad < 1) {
-
-        $error =
-            "La cantidad debe ser mayor que 0.";
-
-    }
-
-
-    elseif (!empty($anio) && !is_numeric($anio)) {
-
-        $error =
-            "El año ingresado no es válido.";
-
-    }
-
-
-    else {
-
-
-        // =============================================
-        // VERIFICAR CÓDIGO DUPLICADO
-        // =============================================
-
-        $stmtExiste = $conn->prepare(
-            "SELECT id
-             FROM bibliografia
-             WHERE codigo = ?
-             LIMIT 1"
-        );
-
-        $stmtExiste->bind_param(
-            "s",
-            $codigo
-        );
-
-        $stmtExiste->execute();
-
-        $resultadoExiste =
-            $stmtExiste->get_result();
-
-
-        if ($resultadoExiste->num_rows > 0) {
-
-            $error =
-                "El código del libro ya existe.";
-
-            $stmtExiste->close();
-
-        } else {
-
-            $stmtExiste->close();
-
-
-            // =========================================
-            // INSERTAR LIBRO
-            // =========================================
-
-            /*
-             * IMPORTANTE:
-             *
-             * ingresado_por recibe el ID REAL
-             * del usuario que inició sesión.
-             *
-             * NO se coloca 0.
-             */
-
-            // La columna real de la BD es `autores`.
-            // El formulario mantiene name="autor" para no cambiar la interfaz.
-            $sql = "
-                INSERT INTO bibliografia (
-
-                    codigo,
-                    dewey,
-                    clasificacion,
-                    nombre,
-                    autores,
-                    editorial,
-                    edicion,
-                    anio,
-                    isbn,
-                    estado,
-                    ubicacion,
-                    fecha_ingreso,
-                    idioma,
-                    carrera_id,
-                    cantidad,
-                    sede_id,
-                    ingresado_por
-
-                )
-                VALUES (
-
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?
-
-                )
-            ";
-
-
-            $stmt =
-                $conn->prepare($sql);
-
-
-            if (!$stmt) {
-
-                $error =
-                    "Error al preparar el registro: "
-                    . $conn->error;
-
-            } else {
-
-
-                /*
-                 * Para carrera_id permitimos NULL.
-                 *
-                 * Si no se seleccionó carrera,
-                 * utilizamos NULL.
-                 */
-
-                $carreraValor =
-                    $carrera_id;
-
-
-                /*
-                 * Año:
-                 *
-                 * Si está vacío enviamos NULL.
-                 */
-
-                $anioValor =
-                    !empty($anio)
-                        ? intval($anio)
-                        : null;
-
-
-                /*
-                 * Tipos:
-                 *
-                 * 13 campos string
-                 * carrera_id = integer
-                 * cantidad = integer
-                 * sede_id = integer
-                 * ingresado_por = integer
-                 */
-
-                $stmt->bind_param(
-                    "sssssssisssssiiii",
-                    $codigo,
-                    $dewey,
-                    $clasificacion,
-                    $nombre,
-                    $autor,
-                    $editorial,
-                    $edicion,
-                    $anioValor,
-                    $isbn,
-                    $estado,
-                    $ubicacion,
-                    $fecha_ingreso,
-                    $idioma,
-                    $carreraValor,
-                    $cantidad,
-                    $sede_id,
-                    $user_id
-                );
-
-
-                /*
-                 * IMPORTANTE:
-                 *
-                 * bind_param no permite enviar NULL
-                 * directamente de la misma manera en
-                 * algunas configuraciones.
-                 *
-                 * Si carrera/año son NULL, se ejecuta
-                 * igualmente cuando la columna permite NULL.
-                 */
-
-                if ($stmt->execute()) {
-
-
-                    $success =
-                        "Libro registrado correctamente.";
-
-
-                    /*
-                     * Limpiar los valores del formulario
-                     */
-
-                    $codigo = '';
-                    $dewey = '';
-                    $clasificacion = '';
-                    $nombre = '';
-                    $autor = '';
-                    $editorial = '';
-                    $edicion = '';
-                    $anio = '';
-                    $isbn = '';
-                    $estado = 'Disponible';
-                    $ubicacion = '';
-                    $fecha_ingreso = date('Y-m-d');
-                    $idioma = '';
-                    $carrera_id = null;
-                    $cantidad = 1;
-
-
-                } else {
-
-                    $error =
-                        "Error al registrar el libro: "
-                        . $stmt->error;
-
-                }
-
-
-                $stmt->close();
-
-            }
-
+    if ($codigo === '' || $nombre === '') {
+        $error = 'El código y el nombre del libro son obligatorios.';
+    } elseif ($ubicacion === '') {
+        $error = 'Seleccione un estante (A-1 a A-5 o B-1 a B-5) y un nivel del 0 al 4.';
+    } elseif (!in_array($estado, ['Disponible','Prestado','Deteriorado','Baja'], true)) {
+        $error = 'El estado seleccionado no es válido.';
+    } elseif ($anio !== null && ($anio < 1000 || $anio > ((int)date('Y') + 1))) {
+        $error = 'El año ingresado no es válido.';
+    } else {
+        $stmt = $conn->prepare('SELECT id FROM bibliografia WHERE codigo=? LIMIT 1');
+        $stmt->bind_param('s', $codigo);
+        $stmt->execute();
+        $duplicado = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($duplicado) {
+            $error = 'El código del libro ya existe.';
         }
-
     }
 
-}
+    $frontal = null;
+    $trasera = null;
 
+    if ($error === '') {
+        [$okFrontal, $frontal, $errFrontal] = guardarFoto($_FILES['foto_frontal'] ?? [], 'libro_frontal');
+        if (!$okFrontal) $error = $errFrontal;
+        if ($error === '') {
+            [$okTrasera, $trasera, $errTrasera] = guardarFoto($_FILES['foto_trasera'] ?? [], 'libro_trasera');
+            if (!$okTrasera) $error = $errTrasera;
+        }
+    }
+
+    if ($error === '') {
+        $sql = "INSERT INTO bibliografia
+            (codigo,dewey,clasificacion,nombre,autores,editorial,edicion,anio,isbn,estado,ubicacion,
+             fecha_ingreso,idioma,carrera_id,catalogacion,observaciones,cantidad,foto, foto_frontal,
+             foto_trasera,sede_id,ingresado_por)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            $error = 'Error al preparar el registro: ' . $conn->error;
+        } else {
+            $usuario_id = (int)$_SESSION['user_id'];
+            $stmt->bind_param(
+                'sssssssisssssississsii',
+                $codigo,$dewey,$clasificacion,$nombre,$autores,$editorial,$edicion,$anio,$isbn,$estado,
+                $ubicacion,$fecha_ingreso,$idioma,$carrera_id,$catalogacion,$observaciones,$cantidad,
+                $frontal,$frontal,$trasera,$sede_id,$usuario_id
+            );
+            if ($stmt->execute()) {
+                $success = 'Libro registrado correctamente con sus fotografías.';
+                $codigo=$dewey=$clasificacion=$nombre=$autores=$editorial=$edicion=$isbn=$catalogacion=$observaciones='';
+                $anio=null; $estado='Disponible'; $estante=''; $nivel=-1; $fecha_ingreso=date('Y-m-d');
+                $idioma='Español'; $carrera_id=null; $cantidad=1; $ubicacion='';
+            } else {
+                if ($frontal && is_file(__DIR__.'/../uploads/'.basename($frontal))) @unlink(__DIR__.'/../uploads/'.basename($frontal));
+                if ($trasera && is_file(__DIR__.'/../uploads/'.basename($trasera))) @unlink(__DIR__.'/../uploads/'.basename($trasera));
+                $error = 'Error al registrar el libro: ' . $stmt->error;
+            }
+            $stmt->close();
+        }
+    }
+}
 
 include '../includes/header.php';
-
 ?>
-
-
 <style>
-
-/* =====================================================
-   CONTENEDOR
-===================================================== */
-
-.book-form-container {
-
-    max-width: 1050px;
-
-    margin: 0 auto;
-
-}
-
-
-/* =====================================================
-   ENCABEZADO
-===================================================== */
-
-.book-header {
-
-    background: #ffffff;
-
-    border-radius: 18px;
-
-    padding: 25px 30px;
-
-    margin-bottom: 20px;
-
-    box-shadow:
-        0 8px 25px rgba(0,0,0,.07);
-
-}
-
-.book-header h2 {
-
-    color: #3159d8;
-
-    font-weight: 700;
-
-    margin-bottom: 5px;
-
-}
-
-.book-header p {
-
-    color: #718096;
-
-    margin: 0;
-
-}
-
-
-/* =====================================================
-   TARJETA
-===================================================== */
-
-.book-card {
-
-    background: #ffffff;
-
-    border-radius: 18px;
-
-    box-shadow:
-        0 10px 30px rgba(0,0,0,.08);
-
-    overflow: hidden;
-
-}
-
-.book-card-header {
-
-    background: #3159d8;
-
-    color: #ffffff;
-
-    padding: 17px 25px;
-
-    font-size: 18px;
-
-    font-weight: 600;
-
-}
-
-.book-card-body {
-
-    padding: 28px;
-
-}
-
-
-/* =====================================================
-   CAMPOS
-===================================================== */
-
-.form-label {
-
-    font-weight: 600;
-
-    color: #27364b;
-
-}
-
-.form-control,
-.form-select {
-
-    border-radius: 10px;
-
-    border: 1px solid #dce3ed;
-
-    min-height: 46px;
-
-}
-
-.form-control:focus,
-.form-select:focus {
-
-    border-color: #3159d8;
-
-    box-shadow:
-        0 0 0 .2rem rgba(49,89,216,.12);
-
-}
-
-
-/* =====================================================
-   SEDE
-===================================================== */
-
-.sede-box {
-
-    background: #eef8f3;
-
-    border: 1px solid #c8ebd9;
-
-    color: #16865a;
-
-    border-radius: 10px;
-
-    padding: 12px 15px;
-
-    font-weight: 600;
-
-}
-
-
-/* =====================================================
-   BOTONES
-===================================================== */
-
-.btn-guardar {
-
-    background: #3159d8;
-
-    border-color: #3159d8;
-
-    color: white;
-
-    font-weight: 600;
-
-    padding: 11px 22px;
-
-    border-radius: 10px;
-
-}
-
-.btn-guardar:hover {
-
-    background: #2649bd;
-
-    border-color: #2649bd;
-
-    color: white;
-
-}
-
-.btn-cancelar {
-
-    border-radius: 10px;
-
-    padding: 11px 22px;
-
-    font-weight: 600;
-
-}
-
-
-/* =====================================================
-   RESPONSIVE
-===================================================== */
-
-@media (max-width: 700px) {
-
-    .book-card-body {
-
-        padding: 20px;
-
-    }
-
-    .book-header {
-
-        padding: 20px;
-
-    }
-
-}
-
+.book-card{max-width:1100px;margin:auto;background:#fff;border-radius:18px;box-shadow:0 8px 30px rgba(0,0,0,.07);overflow:hidden}
+.book-card-header{background:#0d6efd;color:#fff;padding:18px 24px;font-size:20px;font-weight:700}
+.book-card-body{padding:24px}
+.preview-img{width:100%;height:220px;object-fit:contain;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;padding:8px}
 </style>
-
-
-<div class="book-form-container">
-
-
-    <!-- =================================================
-         ENCABEZADO
-    ================================================== -->
-
-    <div class="book-header">
-
-        <h2>
-
-            <i class="fas fa-book-medical me-2"></i>
-
-            Registrar Nuevo Libro
-
-        </h2>
-
-        <p>
-
-            Registra el material bibliográfico
-            correspondiente a la sede Danlí.
-
-        </p>
-
-    </div>
-
-
-    <!-- =================================================
-         MENSAJES
-    ================================================== -->
-
-    <?php if (!empty($error)): ?>
-
-        <div
-            class="alert alert-danger alert-dismissible fade show"
-            role="alert"
-        >
-
-            <i class="fas fa-exclamation-triangle me-2"></i>
-
-            <?php
-            echo htmlspecialchars(
-                $error,
-                ENT_QUOTES,
-                'UTF-8'
-            );
-            ?>
-
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="alert"
-            ></button>
-
-        </div>
-
-    <?php endif; ?>
-
-
-    <?php if (!empty($success)): ?>
-
-        <div
-            class="alert alert-success alert-dismissible fade show"
-            role="alert"
-        >
-
-            <i class="fas fa-check-circle me-2"></i>
-
-            <?php
-            echo htmlspecialchars(
-                $success,
-                ENT_QUOTES,
-                'UTF-8'
-            );
-            ?>
-
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="alert"
-            ></button>
-
-        </div>
-
-    <?php endif; ?>
-
-
-    <!-- =================================================
-         FORMULARIO
-    ================================================== -->
-
-    <div class="book-card">
-
-
-        <div class="book-card-header">
-
-            <i class="fas fa-book me-2"></i>
-
-            Información del Libro
-
-        </div>
-
-
-        <div class="book-card-body">
-
-
-            <form
-                method="post"
-                action=""
-            >
-
-
-                <!-- =====================================
-                     CÓDIGO / DEWEY
-                ====================================== -->
-
-                <div class="row">
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="codigo"
-                            class="form-label"
-                        >
-
-                            Código *
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="codigo"
-                            id="codigo"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $codigo ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Ej. UPH-04-BLGM-000001"
-                            required
-                        >
-
-                    </div>
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="dewey"
-                            class="form-label"
-                        >
-
-                            Clasificación Dewey
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="dewey"
-                            id="dewey"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $dewey ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Ej. 100"
-                        >
-
-                    </div>
-
-
-                </div>
-
-
-                <!-- =====================================
-                     CLASIFICACIÓN
-                ====================================== -->
-
-                <div class="mb-3">
-
-                    <label
-                        for="clasificacion"
-                        class="form-label"
-                    >
-
-                        Clasificación
-
-                    </label>
-
-                    <input
-                        type="text"
-                        name="clasificacion"
-                        id="clasificacion"
-                        class="form-control"
-                        value="<?php
-                            echo htmlspecialchars(
-                                $clasificacion ?? '',
-                                ENT_QUOTES,
-                                'UTF-8'
-                            );
-                        ?>"
-                        placeholder="Ej. Generalidades"
-                    >
-
-                </div>
-
-
-                <!-- =====================================
-                     NOMBRE
-                ====================================== -->
-
-                <div class="mb-3">
-
-                    <label
-                        for="nombre"
-                        class="form-label"
-                    >
-
-                        Nombre del Libro *
-
-                    </label>
-
-                    <input
-                        type="text"
-                        name="nombre"
-                        id="nombre"
-                        class="form-control"
-                        value="<?php
-                            echo htmlspecialchars(
-                                $nombre ?? '',
-                                ENT_QUOTES,
-                                'UTF-8'
-                            );
-                        ?>"
-                        placeholder="Nombre del libro"
-                        required
-                    >
-
-                </div>
-
-
-                <!-- =====================================
-                     AUTOR / EDITORIAL
-                ====================================== -->
-
-                <div class="row">
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="autor"
-                            class="form-label"
-                        >
-
-                            Autor(es)
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="autor"
-                            id="autor"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $autor ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Autor o autores"
-                        >
-
-                    </div>
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="editorial"
-                            class="form-label"
-                        >
-
-                            Editorial
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="editorial"
-                            id="editorial"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $editorial ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Editorial"
-                        >
-
-                    </div>
-
-
-                </div>
-
-
-                <!-- =====================================
-                     EDICIÓN / AÑO
-                ====================================== -->
-
-                <div class="row">
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="edicion"
-                            class="form-label"
-                        >
-
-                            Edición
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="edicion"
-                            id="edicion"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $edicion ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Ej. Cuarta Reimpresión"
-                        >
-
-                    </div>
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="anio"
-                            class="form-label"
-                        >
-
-                            Año
-
-                        </label>
-
-                        <input
-                            type="number"
-                            name="anio"
-                            id="anio"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $anio ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Ej. 1994"
-                            min="1000"
-                            max="2100"
-                        >
-
-                    </div>
-
-
-                </div>
-
-
-                <!-- =====================================
-                     ISBN / IDIOMA
-                ====================================== -->
-
-                <div class="row">
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="isbn"
-                            class="form-label"
-                        >
-
-                            ISBN
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="isbn"
-                            id="isbn"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $isbn ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="ISBN"
-                        >
-
-                    </div>
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="idioma"
-                            class="form-label"
-                        >
-
-                            Idioma
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="idioma"
-                            id="idioma"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $idioma ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Ej. Español"
-                        >
-
-                    </div>
-
-
-                </div>
-
-
-                <!-- =====================================
-                     ESTADO / CANTIDAD
-                ====================================== -->
-
-                <div class="row">
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="estado"
-                            class="form-label"
-                        >
-
-                            Estado
-
-                        </label>
-
-                        <select
-                            name="estado"
-                            id="estado"
-                            class="form-select"
-                        >
-
-                            <option
-                                value="Disponible"
-                                <?php
-                                echo (
-                                    ($estado ?? 'Disponible')
-                                    === 'Disponible'
-                                )
-                                    ? 'selected'
-                                    : '';
-                                ?>
-                            >
-
-                                Disponible
-
-                            </option>
-
-                            <option
-                                value="Prestado"
-                                <?php
-                                echo (
-                                    ($estado ?? '')
-                                    === 'Prestado'
-                                )
-                                    ? 'selected'
-                                    : '';
-                                ?>
-                            >
-
-                                Prestado
-
-                            </option>
-
-                            <option
-                                value="Deteriorado"
-                                <?php
-                                echo (
-                                    ($estado ?? '')
-                                    === 'Deteriorado'
-                                )
-                                    ? 'selected'
-                                    : '';
-                                ?>
-                            >
-
-                                Dañado
-
-                            </option>
-
-                            <option
-                                value="Baja"
-                                <?php
-                                echo (
-                                    ($estado ?? '')
-                                    === 'Baja'
-                                )
-                                    ? 'selected'
-                                    : '';
-                                ?>
-                            >
-
-                                Baja
-
-                            </option>
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="cantidad"
-                            class="form-label"
-                        >
-
-                            Cantidad *
-
-                        </label>
-
-                        <input
-                            type="number"
-                            name="cantidad"
-                            id="cantidad"
-                            class="form-control"
-                            value="<?php
-                                echo (int)(
-                                    $cantidad ?? 1
-                                );
-                            ?>"
-                            min="1"
-                            required
-                        >
-
-                    </div>
-
-
-                </div>
-
-
-                <!-- =====================================
-                     UBICACIÓN / FECHA
-                ====================================== -->
-
-                <div class="row">
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="ubicacion"
-                            class="form-label"
-                        >
-
-                            Ubicación
-
-                        </label>
-
-                        <input
-                            type="text"
-                            name="ubicacion"
-                            id="ubicacion"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $ubicacion ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                            placeholder="Ej. Estante A-01"
-                        >
-
-                    </div>
-
-
-                    <div class="col-md-6 mb-3">
-
-                        <label
-                            for="fecha_ingreso"
-                            class="form-label"
-                        >
-
-                            Fecha de ingreso
-
-                        </label>
-
-                        <input
-                            type="date"
-                            name="fecha_ingreso"
-                            id="fecha_ingreso"
-                            class="form-control"
-                            value="<?php
-                                echo htmlspecialchars(
-                                    $fecha_ingreso
-                                        ?? date('Y-m-d'),
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                );
-                            ?>"
-                        >
-
-                    </div>
-
-
-                </div>
-
-
-                <!-- =====================================
-                     CARRERA
-                ====================================== -->
-
-                <div class="mb-3">
-
-                    <label
-                        for="carrera_id"
-                        class="form-label"
-                    >
-
-                        Carrera
-
-                    </label>
-
-                    <select
-                        name="carrera_id"
-                        id="carrera_id"
-                        class="form-select"
-                    >
-
-                        <option value="">
-
-                            Seleccione una carrera
-
-                        </option>
-
-
-                        <?php if ($resultCarreras): ?>
-
-
-                            <?php while (
-                                $carrera =
-                                $resultCarreras->fetch_assoc()
-                            ): ?>
-
-                                <option
-                                    value="<?php
-                                        echo (int)
-                                            $carrera['id'];
-                                    ?>"
-                                    <?php
-                                    echo (
-                                        isset(
-                                            $carrera_id
-                                        )
-                                        &&
-                                        $carrera_id ==
-                                            $carrera['id']
-                                    )
-                                        ? 'selected'
-                                        : '';
-                                    ?>
-                                >
-
-                                    <?php
-
-                                    echo htmlspecialchars(
-                                        $carrera['nombre'],
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    );
-
-                                    ?>
-
-                                </option>
-
-                            <?php endwhile; ?>
-
-
-                        <?php endif; ?>
-
-
-                    </select>
-
-                </div>
-
-
-                <!-- =====================================
-                     SEDE
-                ====================================== -->
-
-                <div class="mb-4">
-
-                    <label
-                        class="form-label"
-                    >
-
-                        Sede
-
-                    </label>
-
-
-                    <div class="sede-box">
-
-                        <i
-                            class="fas fa-map-marker-alt me-2"
-                        ></i>
-
-                        Danli
-
-                        <input
-                            type="hidden"
-                            name="sede_id"
-                            value="4"
-                        >
-
-                    </div>
-
-                </div>
-
-
-                <!-- =====================================
-                     USUARIO REGISTRADOR
-                ====================================== -->
-
-                <div class="mb-4">
-
-                    <label
-                        class="form-label"
-                    >
-
-                        Registrado por
-
-                    </label>
-
-
-                    <div class="sede-box">
-
-                        <i
-                            class="fas fa-user me-2"
-                        ></i>
-
-                        <?php
-
-                        echo htmlspecialchars(
-                            $usuarioSesion['username'],
-                            ENT_QUOTES,
-                            'UTF-8'
-                        );
-
-                        ?>
-
-                    </div>
-
-                </div>
-
-
-                <!-- =====================================
-                     BOTONES
-                ====================================== -->
-
-                <div
-                    class="d-flex justify-content-between align-items-center flex-wrap gap-2"
-                >
-
-
-                    <a
-                        href="list.php"
-                        class="btn btn-secondary btn-cancelar"
-                    >
-
-                        <i
-                            class="fas fa-arrow-left me-1"
-                        ></i>
-
-                        Cancelar
-
-                    </a>
-
-
-                    <button
-                        type="submit"
-                        class="btn btn-guardar"
-                    >
-
-                        <i
-                            class="fas fa-save me-1"
-                        ></i>
-
-                        Registrar Libro
-
-                    </button>
-
-
-                </div>
-
-
-            </form>
-
-
-        </div>
-
-    </div>
-
-
+<div class="container-fluid py-4">
+<div class="book-card">
+<div class="book-card-header"><i class="fas fa-book me-2"></i>Agregar Libro — Biblioteca UPH Danlí</div>
+<div class="book-card-body">
+<?php if($error): ?><div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i><?=htmlspecialchars($error)?></div><?php endif; ?>
+<?php if($success): ?><div class="alert alert-success"><i class="fas fa-check-circle me-2"></i><?=htmlspecialchars($success)?></div><?php endif; ?>
+<form method="post" enctype="multipart/form-data">
+<div class="row g-3">
+<div class="col-md-4"><label class="form-label">Código *</label><input name="codigo" class="form-control" required value="<?=htmlspecialchars($codigo)?>"></div>
+<div class="col-md-4"><label class="form-label">Dewey</label><input name="dewey" class="form-control" value="<?=htmlspecialchars($dewey)?>"></div>
+<div class="col-md-4"><label class="form-label">Clasificación</label><input name="clasificacion" class="form-control" value="<?=htmlspecialchars($clasificacion)?>"></div>
+<div class="col-12"><label class="form-label">Nombre del libro *</label><input name="nombre" class="form-control" required value="<?=htmlspecialchars($nombre)?>"></div>
+<div class="col-md-6"><label class="form-label">Autor(es)</label><input name="autores" class="form-control" value="<?=htmlspecialchars($autores)?>"></div>
+<div class="col-md-6"><label class="form-label">Editorial</label><input name="editorial" class="form-control" value="<?=htmlspecialchars($editorial)?>"></div>
+<div class="col-md-4"><label class="form-label">Edición</label><input name="edicion" class="form-control" value="<?=htmlspecialchars($edicion)?>"></div>
+<div class="col-md-4"><label class="form-label">Año</label><input type="number" name="anio" class="form-control" value="<?=htmlspecialchars((string)$anio)?>"></div>
+<div class="col-md-4"><label class="form-label">ISBN</label><input name="isbn" class="form-control" value="<?=htmlspecialchars($isbn)?>"></div>
+<div class="col-md-3"><label class="form-label">Estado</label><select name="estado" class="form-select"><?php foreach(['Disponible','Prestado','Deteriorado','Baja'] as $e): ?><option value="<?=$e?>" <?=$estado===$e?'selected':''?>><?=$e?></option><?php endforeach;?></select></div>
+<div class="col-md-3"><label class="form-label">Cantidad *</label><input type="number" min="1" name="cantidad" class="form-control" required value="<?=$cantidad?>"></div>
+<div class="col-md-3"><label class="form-label">Fecha de ingreso</label><input type="date" name="fecha_ingreso" class="form-control" value="<?=htmlspecialchars($fecha_ingreso)?>"></div>
+<div class="col-md-3"><label class="form-label">Idioma</label><input name="idioma" class="form-control" value="<?=htmlspecialchars($idioma)?>"></div>
+<div class="col-md-6"><label class="form-label">Carrera</label><select name="carrera_id" class="form-select"><option value="">Todas / General</option><?php if($carreras): while($c=$carreras->fetch_assoc()): ?><option value="<?=$c['id']?>" <?=$carrera_id===$c['id']?'selected':''?>><?=htmlspecialchars($c['nombre'])?></option><?php endwhile; endif;?></select></div>
+<div class="col-md-3"><label class="form-label">Estante *</label><select name="estante" class="form-select" required><option value="">Seleccione</option><?php foreach(['A-1','A-2','A-3','A-4','A-5','B-1','B-2','B-3','B-4','B-5'] as $e): ?><option value="<?=$e?>" <?=$estante===$e?'selected':''?>><?=$e?></option><?php endforeach;?></select></div>
+<div class="col-md-3"><label class="form-label">Nivel *</label><select name="nivel_estante" class="form-select" required><option value="">Seleccione</option><?php for($n=0;$n<=4;$n++): ?><option value="<?=$n?>" <?=$nivel===$n?'selected':''?>>Nivel <?=$n?></option><?php endfor;?></select></div>
+<div class="col-12"><label class="form-label">Ubicación</label><input class="form-control" value="<?=htmlspecialchars($ubicacion)?>" readonly><small class="text-muted">Se genera automáticamente con estante y nivel.</small></div>
+<div class="col-md-6">
+<label class="form-label fw-bold">📕 Foto frontal / portada</label>
+<input type="file" name="foto_frontal" id="foto_frontal" class="form-control" accept="image/jpeg,image/png,image/webp">
+<div class="mt-2"><img id="preview_frontal" class="preview-img" alt="Vista previa frontal" style="display:none"></div>
 </div>
-
-
-<?php
-
-include '../includes/footer.php';
-
-?>
+<div class="col-md-6">
+<label class="form-label fw-bold">📗 Foto trasera / contraportada</label>
+<input type="file" name="foto_trasera" id="foto_trasera" class="form-control" accept="image/jpeg,image/png,image/webp">
+<div class="mt-2"><img id="preview_trasera" class="preview-img" alt="Vista previa trasera" style="display:none"></div>
+</div>
+<div class="col-12"><label class="form-label">Catalogación</label><input name="catalogacion" class="form-control" value="<?=htmlspecialchars($catalogacion)?>"></div>
+<div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="3"><?=htmlspecialchars($observaciones)?></textarea></div>
+</div>
+<div class="d-flex justify-content-between mt-4"><a href="list.php" class="btn btn-secondary"><i class="fas fa-arrow-left me-1"></i>Cancelar</a><button class="btn btn-primary"><i class="fas fa-save me-1"></i>Guardar Libro</button></div>
+</form>
+</div></div></div>
+<script>
+function preview(input,id){const f=input.files[0],img=document.getElementById(id);if(f){img.src=URL.createObjectURL(f);img.style.display='block';}}
+document.getElementById('foto_frontal').addEventListener('change',function(){preview(this,'preview_frontal')});
+document.getElementById('foto_trasera').addEventListener('change',function(){preview(this,'preview_trasera')});
+</script>
+<?php include '../includes/footer.php'; ?>

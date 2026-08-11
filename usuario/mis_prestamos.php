@@ -20,7 +20,7 @@ SELECT s.*,b.nombre libro_nombre,b.codigo,b.ubicacion,
 FROM solicitudes_prestamo s
 INNER JOIN bibliografia b ON b.id=s.bibliografia_id
 LEFT JOIN carreras c ON c.id=s.carrera_id
-WHERE s.usuario_id=?
+WHERE s.user_id=?
 ORDER BY s.fecha_solicitud DESC");
 $stmt->bind_param('i',$user_id);$stmt->execute();$res=$stmt->get_result();
 
@@ -56,8 +56,12 @@ $classes=['pendiente'=>'pend','aprobada'=>'ap','prestado'=>'pre','rechazada'=>'r
 <hr>
 <div class="row g-3">
 <div class="col-md-4"><strong>Solicitud:</strong><br><?=date('d/m/Y H:i',strtotime($r['fecha_solicitud']))?></div>
+<?php if ($rol === 'alumno'): ?>
 <div class="col-md-4"><strong>Carrera:</strong><br><?=htmlspecialchars($r['carrera_nombre']?:'No especificada')?></div>
-<div class="col-md-4"><strong>Ubicación:</strong><br><?=htmlspecialchars($r['ubicacion']?:'Biblioteca UPH Danlí')?></div>
+<?php else: ?>
+<div class="col-md-4"><strong>Tipo:</strong><br>Docente</div>
+<?php endif; ?>
+<div class="col-md-4"><strong><i class="fas fa-layer-group me-1 text-primary"></i>Estante / nivel:</strong><br><?=htmlspecialchars($r['ubicacion']?:'Biblioteca UPH Danlí')?></div>
 </div>
 <?php if($estado==='pendiente'): ?>
 <div class="alert alert-warning mt-3 mb-0"><i class="fas fa-clock me-1"></i>Tu solicitud está siendo revisada por la Biblioteca.</div>

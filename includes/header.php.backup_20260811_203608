@@ -1,0 +1,1222 @@
+<?php
+// Incluir la configuración de la base de datos
+include_once __DIR__ . '/../config/db.php';
+
+// Iniciar sesión si aún no se ha iniciado
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Si se pasa el parámetro para cambiar la sede (solo para admin)
+if (isset($_GET['cambiar_sede']) && isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
+    $_SESSION['sede_seleccionada'] = intval($_GET['cambiar_sede']);
+    // Redirige a la página deseada tras cambiar la sede
+    // Ruta absoluta para evitar errores 404
+    header("Location: /biblioteca/dashboard.php");
+    exit();
+}
+
+// Obtener la sede seleccionada de la sesión
+$currentSede = isset($_SESSION['sede_seleccionada']) ? intval($_SESSION['sede_seleccionada']) : 0;
+$sedeName = "No definida";
+if ($currentSede > 0) {
+    $sqlSede = "SELECT nombre FROM sedes WHERE id = $currentSede";
+    $resultSede = $conn->query($sqlSede);
+    if ($resultSede && $rowSede = $resultSede->fetch_assoc()) {
+        $sedeName = $rowSede['nombre'];
+    }
+}
+
+// Obtener el rol del usuario (asumido que se guardó en sesión)
+$role = isset($_SESSION['role']) ? $_SESSION['role'] : '';
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Sistema de Biblioteca UPH</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <!-- Google Fonts: Inter -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+  <!-- SweetAlert2 CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+  <style>
+    :root {
+      --primary-color: #2563eb;
+      --primary-dark: #1d4ed8;
+      --secondary-color: #64748b;
+      --accent-gradient: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      --success-gradient: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+      --warning-gradient: linear-gradient(135deg, #ffb700 0%, #ff8500 100%);
+      --glass-effect: rgba(255, 255, 255, 0.1);
+      --glass-border: rgba(255, 255, 255, 0.2);
+      --accent-color: #ffb700;
+      --success-color: #2563eb;
+      --danger-color: #ef476f;
+      --warning-color: #ffb700;
+      --info-color: #3b82f6;
+      --light-bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --border-color: #e2e8f0;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      color: var(--text-primary);
+      line-height: 1.6;
+      position: relative;
+    }
+    
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
+      background-size: 400% 400%;
+      animation: gradientShift 20s ease infinite;
+      opacity: 0.03;
+      z-index: -1;
+      pointer-events: none;
+    }
+    
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
+    .navbar {
+      background: var(--accent-gradient) !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      border: none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      position: relative;
+      z-index: 1000;
+    }
+    
+    .navbar::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+    }
+    
+    .navbar-brand {
+      font-weight: 700;
+      color: white !important;
+      font-size: 1.6rem;
+      position: relative;
+      z-index: 2;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+    
+    .navbar-brand:hover {
+      transform: scale(1.05);
+      text-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    }
+    
+    .navbar .btn {
+      position: relative;
+      z-index: 2;
+      border-radius: 10px;
+      font-weight: 500;
+      padding: 8px 16px;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    
+    .navbar .btn-outline-primary {
+      border: 2px solid rgba(255,255,255,0.3);
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .navbar .btn-outline-primary:hover {
+      background: rgba(255,255,255,0.2);
+      border-color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .navbar .btn-outline-secondary {
+      border: 2px solid rgba(255,255,255,0.3);
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .navbar .btn-outline-secondary:hover {
+      background: rgba(255,255,255,0.2);
+      border-color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .navbar .btn-outline-danger {
+      border: 2px solid rgba(239, 68, 68, 0.8);
+      color: #ef4444;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+    }
+    
+    .navbar .btn-outline-danger:hover {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3);
+    }
+    
+    .navbar span {
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .navbar strong {
+      color: white;
+    }
+    
+    /* Sidebar Offcanvas */
+    .offcanvas {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-right: 1px solid var(--glass-border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      width: 320px !important;
+    }
+    
+    .offcanvas-header {
+      background: var(--accent-gradient);
+      color: white;
+      border-bottom: 1px solid var(--glass-border);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .offcanvas-header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+    }
+    
+    .offcanvas-title {
+      font-weight: 700;
+      color: white;
+      position: relative;
+      z-index: 2;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    .btn-close {
+      filter: brightness(0) invert(1);
+      position: relative;
+      z-index: 2;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-close:hover {
+      transform: scale(1.1);
+      filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+    }
+    
+    .offcanvas a {
+      color: var(--text-primary);
+      text-decoration: none;
+      padding: 14px 20px;
+      display: block;
+      border-radius: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      margin: 4px 12px;
+      font-weight: 500;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    
+    .offcanvas a::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: var(--accent-gradient);
+      transition: left 0.3s ease;
+      z-index: -1;
+    }
+    
+    .offcanvas a:hover::before {
+      left: 0;
+    }
+    
+    .offcanvas a:hover {
+      color: white;
+      transform: translateX(8px) scale(1.02);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .offcanvas a i {
+      width: 24px;
+      text-align: center;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+    }
+    
+    .offcanvas a:hover i {
+      transform: scale(1.1);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Títulos de sección en el sidebar */
+    .sidebar-section-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--primary-color);
+      margin-bottom: 8px;
+      margin-top: 24px;
+      padding: 8px 20px;
+      font-weight: 700;
+      position: relative;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+      border-radius: 8px;
+      margin-left: 12px;
+      margin-right: 12px;
+    }
+    
+    .sidebar-section-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--accent-gradient);
+      border-radius: 2px;
+    }
+    
+    /* Cards y contenedores */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.3s ease;
+    }
+    
+    .card:hover {
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+    
+    .card-header {
+      background: linear-gradient(135deg, var(--light-bg) 0%, #ffffff 100%);
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    
+    /* Botones personalizados */
+    .btn {
+      border-radius: 12px;
+      font-weight: 600;
+      padding: 10px 24px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+      border: none;
+    }
+    
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+    
+    .btn:hover::before {
+      left: 100%;
+    }
+    
+    .btn-primary {
+      background: var(--accent-gradient);
+      color: white;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+      color: white;
+    }
+    
+    .btn-success {
+      background: var(--success-gradient);
+      color: white;
+      box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+    }
+    
+    .btn-success:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(79, 172, 254, 0.4);
+      color: white;
+    }
+    
+    .btn-warning {
+      background: var(--warning-gradient);
+      color: white;
+      box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+    }
+    
+    .btn-warning:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(240, 147, 251, 0.4);
+      color: white;
+    }
+    
+    .btn-danger {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    }
+    
+    .btn-danger:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+      color: white;
+    }
+    
+    .btn-info {
+      background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(116, 185, 255, 0.3);
+    }
+    
+    .btn-info:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(116, 185, 255, 0.4);
+      color: white;
+    }
+    
+    /* Tablas */
+    .table {
+      background: var(--card-bg);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .table thead th {
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+      color: white;
+      border: none;
+      font-weight: 600;
+      padding: 16px;
+    }
+    
+    .table tbody tr {
+      transition: all 0.2s ease;
+    }
+    
+    .table tbody tr:hover {
+      background-color: var(--light-bg);
+    }
+    
+    /* Formularios */
+    .form-control {
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 16px;
+      transition: all 0.3s ease;
+    }
+    
+    .form-control:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    
+    .form-label {
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    
+    /* Alertas */
+    .alert {
+      border: none;
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-weight: 500;
+    }
+    
+    .alert-success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+      color: var(--success-color);
+      border-left: 4px solid var(--success-color);
+    }
+    
+    .alert-danger {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%);
+      color: var(--danger-color);
+      border-left: 4px solid var(--danger-color);
+    }
+    
+    .alert-warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+      color: var(--warning-color);
+      border-left: 4px solid var(--warning-color);
+    }
+    
+    .alert-info {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(8, 145, 178, 0.1) 100%);
+      color: var(--info-color);
+      border-left: 4px solid var(--info-color);
+    }
+    
+    /* Dashboard Styles */
+    .dashboard-header {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 30px 40px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--glass-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    
+    .dashboard-title {
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0;
+      display: flex;
+      align-items: center;
+    }
+    
+    .sede-badge {
+      background: var(--accent-gradient);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 50px;
+      font-weight: 600;
+      font-size: 1rem;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      display: inline-flex;
+      align-items: center;
+    }
+    
+    /* Stats Cards */
+    .stats-card {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 20px;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .stats-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--accent-gradient);
+    }
+    
+    .stats-card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    }
+    
+    .stats-card-primary::before {
+      background: var(--accent-gradient);
+    }
+    
+    .stats-card-success::before {
+      background: var(--success-gradient);
+    }
+    
+    .stats-card-warning::before {
+      background: var(--warning-gradient);
+    }
+    
+    .stats-card-danger::before {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+    }
+    
+    .stats-card-body {
+      padding: 30px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    
+    .stats-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .stats-card-primary .stats-icon {
+      background: var(--accent-gradient);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    }
+    
+    .stats-card-success .stats-icon {
+      background: var(--success-gradient);
+      box-shadow: 0 8px 25px rgba(79, 172, 254, 0.3);
+    }
+    
+    .stats-card-warning .stats-icon {
+      background: var(--warning-gradient);
+      box-shadow: 0 8px 25px rgba(240, 147, 251, 0.3);
+    }
+    
+    .stats-card-danger .stats-icon {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+      box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+    }
+    
+    .stats-content {
+      flex: 1;
+    }
+    
+    .stats-number {
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin: 0;
+      line-height: 1;
+    }
+    
+    .stats-label {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      margin: 8px 0;
+      font-weight: 500;
+    }
+    
+    .stats-trend {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.85rem;
+      color: #10b981;
+      font-weight: 600;
+    }
+    
+    .stats-card-footer {
+      padding: 20px 30px;
+      background: rgba(248, 250, 252, 0.5);
+      border-top: 1px solid var(--glass-border);
+    }
+    
+    .stats-link {
+      color: var(--primary-color);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+    }
+    
+    .stats-link:hover {
+      color: var(--primary-dark);
+      transform: translateX(5px);
+    }
+    
+    /* Thesis Distribution Styles */
+    .thesis-distribution {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    
+    .thesis-distribution::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    .thesis-distribution::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 10px;
+    }
+    
+    .thesis-distribution::-webkit-scrollbar-thumb {
+      background: var(--accent-gradient);
+      border-radius: 10px;
+    }
+    
+    .thesis-item {
+      padding: 15px;
+      border-radius: 12px;
+      background: rgba(248, 250, 252, 0.5);
+      transition: all 0.3s ease;
+      border: 1px solid transparent;
+    }
+    
+    .thesis-item:hover {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: var(--glass-border);
+      transform: translateX(5px);
+    }
+    
+    /* Chart Container Styles */
+    .chart-container {
+      background: rgba(248, 250, 252, 0.3);
+      border-radius: 15px;
+      padding: 20px;
+    }
+    
+    /* Loading Animation */
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+    
+    .stats-number {
+      animation: pulse 0.5s ease-in-out;
+    }
+    
+    /* Floating Animation for Icons */
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0px);
+      }
+      50% {
+        transform: translateY(-5px);
+      }
+    }
+    
+    .stats-icon {
+      animation: float 3s ease-in-out infinite;
+    }
+    
+    .stats-card:nth-child(1) .stats-icon {
+      animation-delay: 0s;
+    }
+    
+    .stats-card:nth-child(2) .stats-icon {
+      animation-delay: 0.5s;
+    }
+    
+    .stats-card:nth-child(3) .stats-icon {
+      animation-delay: 1s;
+    }
+    
+    .stats-card:nth-child(4) .stats-icon {
+      animation-delay: 1.5s;
+    }
+    
+    /* Enhanced Card Animations */
+    .stats-card {
+      animation: fadeInUp 0.6s ease-out;
+    }
+    
+    .stats-card:nth-child(1) {
+      animation-delay: 0.1s;
+    }
+    
+    .stats-card:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    
+    .stats-card:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+    
+    .stats-card:nth-child(4) {
+      animation-delay: 0.4s;
+    }
+    
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    /* Progress Bar Animation */
+    .progress {
+      background: rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+    
+    .progress-bar {
+      transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* Estilos para el Selector de Sede Moderno */
+    .sede-selector .sede-btn {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(29, 78, 216, 0.1) 100%);
+      border: 2px solid rgba(37, 99, 235, 0.2);
+      color: var(--primary-color);
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    
+    .sede-selector .sede-btn:hover {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(29, 78, 216, 0.15) 100%);
+      border-color: var(--primary-color);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(37, 99, 235, 0.2);
+    }
+    
+    .sede-selector .sede-name {
+      font-weight: 600;
+    }
+    
+    .sede-dropdown {
+      border: none;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 8px;
+      min-width: 250px;
+    }
+    
+    .sede-dropdown .dropdown-header {
+      color: var(--primary-color);
+      font-weight: 700;
+      padding: 12px 16px 8px;
+    }
+    
+    .sede-item {
+      border-radius: 10px;
+      margin: 2px 0;
+      padding: 10px 16px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+    }
+    
+    .sede-item:hover {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(29, 78, 216, 0.1) 100%);
+      transform: translateX(5px);
+    }
+    
+    .sede-item.active {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(29, 78, 216, 0.15) 100%);
+      font-weight: 600;
+    }
+    
+    .sede-info {
+      display: flex;
+      align-items: center;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(29, 78, 216, 0.05) 100%);
+      border-radius: 12px;
+      border: 1px solid rgba(37, 99, 235, 0.1);
+    }
+    
+    /* Estilos para el Usuario Dropdown Moderno */
+    .user-dropdown .user-btn {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
+      border: 2px solid rgba(37, 99, 235, 0.1);
+      color: #000000 !important;
+      padding: 8px 16px;
+      border-radius: 16px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    }
+    
+    .user-dropdown .user-btn:hover {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(248, 250, 252, 1) 100%);
+      border-color: var(--primary-color);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(37, 99, 235, 0.15);
+    }
+    
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    
+    .user-avatar-large {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--accent-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1.2;
+    }
+    
+    .user-name {
+      font-weight: 600;
+      color: #000000 !important;
+      font-size: 14px;
+    }
+    
+    .user-role {
+      color: #666666 !important;
+      font-size: 12px;
+      text-transform: capitalize;
+    }
+    
+    .user-dropdown-menu {
+      border: none;
+      border-radius: 20px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 12px;
+      min-width: 280px;
+      margin-top: 8px;
+    }
+    
+    .user-dropdown-menu .dropdown-header {
+      padding: 16px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(29, 78, 216, 0.05) 100%);
+      margin-bottom: 8px;
+    }
+    
+    .user-dropdown-menu .dropdown-item {
+      border-radius: 12px;
+      margin: 2px 0;
+      padding: 12px 16px;
+      transition: all 0.3s ease;
+      font-weight: 500;
+    }
+    
+    .user-dropdown-menu .dropdown-item:hover {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(29, 78, 216, 0.1) 100%);
+      transform: translateX(5px);
+    }
+    
+    .user-dropdown-menu .dropdown-item.text-danger:hover {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%);
+      color: #dc2626 !important;
+    }
+    
+    @media (max-width: 768px) {
+      .dashboard-header {
+        padding: 20px;
+        text-align: center;
+      }
+      
+      .dashboard-title {
+        font-size: 1.8rem;
+        justify-content: center;
+      }
+      
+      .stats-card-body {
+        padding: 20px;
+        flex-direction: column;
+        text-align: center;
+      }
+      
+      .stats-icon {
+        width: 60px;
+        height: 60px;
+        font-size: 1.5rem;
+      }
+      
+      .stats-number {
+        font-size: 2rem;
+      }
+      
+      .thesis-item {
+        padding: 12px;
+      }
+      
+      .chart-container {
+        padding: 15px;
+        height: 250px !important;
+      }
+      
+      /* Responsive para los nuevos componentes */
+      .user-info {
+        display: none;
+      }
+      
+      .sede-selector .sede-name {
+        display: none;
+      }
+      
+      .sede-info {
+        padding: 6px 12px;
+      }
+      
+      .sede-info span:not(.text-primary) {
+        display: none;
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="/biblioteca/assets/css/responsive.css">
+</head>
+<body>
+<!-- Top Navbar -->
+<nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top">
+  <div class="container-fluid">
+    <!-- Botón para abrir el sidebar -->
+    <button class="btn btn-outline-primary me-2" type="button"
+            data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar"
+            aria-controls="offcanvasSidebar">
+      <i class="fas fa-bars"></i>
+    </button>
+    <a class="navbar-brand" href="/biblioteca/dashboard.php">Biblioteca UPH</a>
+    <div class="d-flex align-items-center ms-auto gap-3">
+      <!-- Selector de Sede Moderno (solo admin) -->
+      <?php if ($role === 'admin'): ?>
+        <div class="sede-selector">
+          <div class="dropdown">
+            <button class="btn sede-btn dropdown-toggle" type="button"
+                    id="dropdownSede" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-map-marker-alt me-2"></i>
+              <span class="sede-name"><?php echo $sedeName; ?></span>
+            </button>
+            <ul class="dropdown-menu sede-dropdown" aria-labelledby="dropdownSede">
+              <li><h6 class="dropdown-header"><i class="fas fa-building me-2"></i>Seleccionar Sede</h6></li>
+              <li><hr class="dropdown-divider"></li>
+              <?php 
+                // Cargar todas las sedes
+                $sqlSedes = "SELECT * FROM sedes ORDER BY nombre ASC";
+                $resultSedes = $conn->query($sqlSedes);
+                while ($sede = $resultSedes->fetch_assoc()):
+                  $isActive = ($sede['id'] == $currentSede) ? 'active' : '';
+              ?>
+                <li>
+                  <a class="dropdown-item sede-item <?php echo $isActive; ?>"
+                     href="?cambiar_sede=<?php echo $sede['id']; ?>">
+                    <i class="fas fa-<?php echo ($sede['id'] == $currentSede) ? 'check-circle text-success' : 'circle'; ?> me-2"></i>
+                    <?php echo $sede['nombre']; ?>
+                    <?php if ($sede['id'] == $currentSede): ?>
+                      <span class="badge bg-success ms-auto">Actual</span>
+                    <?php endif; ?>
+                  </a>
+                </li>
+              <?php endwhile; ?>
+            </ul>
+          </div>
+        </div>
+      <?php else: ?>
+        <div class="sede-info">
+          <i class="fas fa-map-marker-alt text-primary me-2"></i>
+          <span class="text-muted">Sede:</span>
+          <strong class="text-primary"><?php echo $sedeName; ?></strong>
+        </div>
+      <?php endif; ?>
+      
+      <!-- Usuario Dropdown Moderno -->
+      <div class="user-dropdown">
+        <div class="dropdown">
+          <button class="btn user-btn dropdown-toggle" type="button"
+                  id="dropdownUser" data-bs-toggle="dropdown" aria-expanded="false">
+            <div class="user-avatar">
+              <i class="fas fa-user"></i>
+            </div>
+            <div class="user-info">
+              <span class="user-name"><?php echo isset($_SESSION['nombre_completo']) ? $_SESSION['nombre_completo'] : (isset($_SESSION['username']) ? $_SESSION['username'] : 'Invitado'); ?></span>
+              <small class="user-role"><?php echo ucfirst($role); ?></small>
+            </div>
+          </button>
+          <ul class="dropdown-menu user-dropdown-menu" aria-labelledby="dropdownUser">
+            <li><h6 class="dropdown-header">
+              <div class="d-flex align-items-center">
+                <div class="user-avatar-large me-2">
+                  <i class="fas fa-user"></i>
+                </div>
+                <div>
+                  <div class="fw-bold"><?php echo isset($_SESSION['nombre_completo']) ? $_SESSION['nombre_completo'] : (isset($_SESSION['username']) ? $_SESSION['username'] : 'Invitado'); ?></div>
+                  <small class="text-muted"><?php echo ucfirst($role); ?></small>
+                </div>
+              </div>
+            </h6></li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <a class="dropdown-item" href="/biblioteca/dashboard.php">
+                <i class="fas fa-home me-2"></i>Dashboard
+              </a>
+            </li>
+            <?php if ($role === 'admin'): ?>
+            <li>
+              <a class="dropdown-item" href="/biblioteca/usuarios/list.php">
+                <i class="fas fa-users-cog me-2"></i>Gestión de Usuarios
+              </a>
+            </li>
+            <?php endif; ?>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <a class="dropdown-item text-danger" href="/biblioteca/logout.php">
+                <i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Sidebar Offcanvas -->
+<div class="offcanvas offcanvas-start" tabindex="-1" id="offcanvasSidebar"
+     aria-labelledby="offcanvasSidebarLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="offcanvasSidebarLabel">Menú</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+            aria-label="Cerrar"></button>
+  </div>
+  <div class="offcanvas-body">
+    <!-- Sección General -->
+    <div class="sidebar-section-title">General</div>
+    <a href="/biblioteca/dashboard.php" class="d-block mb-2">
+      <i class="fas fa-home me-2"></i>Dashboard
+    </a>
+
+    <?php if ($role === 'admin'): ?>
+      <!-- Sección: Administración -->
+      <div class="sidebar-section-title">Administración</div>
+      <a href="/biblioteca/books/list.php" class="d-block mb-2">
+        <i class="fas fa-book me-2"></i>Lista de Libros
+      </a>
+      <a href="/biblioteca/tesis/list.php" class="d-block mb-2">
+        <i class="fas fa-graduation-cap me-2"></i>Lista de Tesis
+      </a>
+      <a href="/biblioteca/alumnos/add.php" class="d-block mb-2">
+        <i class="fas fa-user-plus me-2"></i>Registrar Alumno
+      </a>
+      <a href="/biblioteca/carreras/list.php" class="d-block mb-2">
+        <i class="fas fa-university me-2"></i>Gestión de Carreras
+      </a>
+      <a href="/biblioteca/instituciones/list.php" class="d-block mb-2">
+        <i class="fas fa-building me-2"></i>Instituciones Externas
+      </a>
+      <a href="/biblioteca/usuarios/list.php" class="d-block mb-2">
+        <i class="fas fa-users-cog me-2"></i>Gestión de Usuarios
+      </a>
+      
+      <!-- Sección: Préstamos y Reservas -->
+      <div class="sidebar-section-title">Préstamos y Reservas</div>
+      <a href="/biblioteca/reservas/list.php" class="d-block mb-2">
+        <i class="fas fa-bookmark me-2"></i>Gestión de Reservas
+      </a>
+      <a href="/biblioteca/alertas.php" class="d-block mb-2">
+        <i class="fas fa-exclamation-triangle me-2"></i>Alertas Préstamos
+      </a>
+      
+      <!-- Sección: Reportes y Alertas -->
+      <div class="sidebar-section-title">Reportes</div>
+      <a href="/biblioteca/reports/index.php" class="d-block mb-2">
+        <i class="fas fa-chart-line me-2"></i>Reportes
+      </a>
+      <a href="/biblioteca/reports/prestamos_devueltos.php" class="d-block mb-2">
+        <i class="fas fa-check-circle me-2"></i>Préstamos Devueltos
+      </a>
+      <a href="/biblioteca/reports/carreras_visitas.php" class="d-block mb-2">
+        <i class="fas fa-chart-bar me-2"></i>Visitas por Carrera
+      </a>
+      <a href="/biblioteca/reports/reporte_libros.php" class="d-block mb-2">
+        <i class="fas fa-file-excel me-2"></i>Reporte Libros
+      </a>
+
+      <!-- Sección: Visitas -->
+      <div class="sidebar-section-title">Visitas</div>
+      <a href="/biblioteca/registrar_visita.php" class="d-block mb-2">
+        <i class="fas fa-user-check me-2"></i>Registrar Visita
+      </a>
+      
+
+    <?php else: ?>
+      <!-- Opciones para Alumno (rol: usuario) -->
+      <div class="sidebar-section-title">Búsqueda</div>
+      <a href="/biblioteca/books/list.php" class="d-block mb-2">
+        <i class="fas fa-search me-2"></i>Buscar Libros
+      </a>
+      <a href="/biblioteca/tesis/list.php" class="d-block mb-2">
+        <i class="fas fa-search me-2"></i>Buscar Tesis
+      </a>
+    <?php endif; ?>
+  </div>
+</div>
+
+<!-- Contenedor Principal -->
+<div class="container mt-4">

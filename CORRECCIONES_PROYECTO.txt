@@ -1,0 +1,93 @@
+
+# CORRECCIÓN DEL FLUJO DE PRÉSTAMOS
+
+Esta versión unifica el flujo de préstamos y elimina la mezcla entre
+`usuario_id` y `user_id` que provocaba errores.
+
+## Flujo definitivo
+
+1. Alumno inicia sesión.
+2. Docente inicia sesión.
+3. Alumno/docente entra a un libro y pulsa **Solicitar Préstamo**.
+4. El sistema identifica automáticamente al usuario de la sesión.
+5. El alumno usa la carrera que ya está vinculada en `alumnos`.
+6. El docente no necesita carrera.
+7. La solicitud queda en **pendiente**.
+8. El administrador recibe la solicitud en **Solicitudes de Préstamo**.
+9. El administrador puede **Aceptar** o **Rechazar**.
+10. Si acepta, el usuario ve **Aprobada - pendiente de recoger** y la ubicación.
+11. Cuando el usuario recoge el libro, el administrador pulsa **Marcar como prestado / entregado**.
+12. El sistema crea el registro real en `registro_visitas` y cambia el estado del libro según sus ejemplares disponibles.
+13. Alumno y docente solamente visualizan sus solicitudes/préstamos; no pueden editarlos ni marcarlos como devueltos.
+
+## Base de datos
+
+### Instalación limpia
+
+Usar:
+
+`database/biblioteca_UPH_COMPLETA_CORREGIDA.sql`
+
+También se dejó la misma estructura en:
+
+`biblioteca.sql`
+
+y:
+
+`database/biblioteca_uph.sql`
+
+### Instalación sobre una base existente
+
+Usar:
+
+`database/migracion_prestamos_corregida.sql`
+
+Antes de ejecutarla, hacer una copia de seguridad de la base.
+
+## Usuarios
+
+La ruta oficial para crear usuarios es:
+
+`usuarios/add.php`
+
+`Crearusuario.php` quedó como ruta de compatibilidad y redirige a esa pantalla.
+
+Al crear:
+
+- Alumno -> se crea automáticamente en `usuarios` y `alumnos`, vinculados por `usuario_id`.
+- Docente -> se crea automáticamente en `usuarios` y `docentes`.
+- Administrador -> solamente se crea en `usuarios`.
+- La carrera se solicita únicamente para alumnos.
+- La sede se asigna automáticamente a Danlí (`sede_id = 4`).
+
+## Prueba recomendada
+
+Crear o revisar tres cuentas:
+
+- Administrador
+- Alumno
+- Docente
+
+Después probar:
+
+Alumno -> Buscar libro -> Solicitar -> cerrar sesión.
+
+Administrador -> Solicitudes de Préstamo -> Aceptar.
+
+Alumno -> Mis préstamos -> verificar ubicación.
+
+Administrador -> Marcar como prestado/entregado.
+
+Alumno -> Mis préstamos -> verificar estado Prestado.
+
+## Importante
+
+No mezclar la estructura antigua que usa:
+
+`solicitudes_prestamo.usuario_id`
+
+con la estructura actual que usa:
+
+`solicitudes_prestamo.user_id`.
+
+La versión corregida utiliza `user_id` de forma uniforme.

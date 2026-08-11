@@ -1,13 +1,31 @@
-# Flujo de solicitudes de préstamo - Biblioteca UPH Danlí
+MODULO GESTION DE USUARIOS - UPH DANLI
+=====================================
 
-1. Ejecuta `sql/solicitudes_prestamo.sql` en la base de datos `biblioteca`.
-2. Reemplaza `books/prestamo.php`.
-3. Copia `admin/solicitudes_prestamo.php` y `admin/solicitud_accion.php` a `biblioteca/admin/`.
-4. Copia `usuario/mis_prestamos.php` a `biblioteca/usuario/`.
-5. En el menú administrativo agrega el enlace a `admin/solicitudes_prestamo.php`.
-6. En el menú de alumno/docente agrega `usuario/mis_prestamos.php`.
+Sede fija:
+    Danlí = sede_id 4
 
-Flujo:
-Alumno/Docente -> Solicitar préstamo -> Notificación administrativa -> Aceptar -> Estado "Aprobada - pendiente de recoger" -> el alumno ve ubicación -> personal entrega -> "Marcar como prestado/entregado" -> estado "Prestado" y se crea el registro en `registro_visitas`.
+Archivos:
+    usuarios/list.php
+    usuarios/edit.php
+    usuarios/delete.php
 
-La ubicación se toma de `bibliografia.ubicacion`.
+Características:
+- Solo administrador.
+- Todos los usuarios se filtran por sede_id = 4.
+- Alumno: puede tener carrera.
+- Docente: no solicita carrera.
+- Administrador: no solicita carrera.
+- Cambiar contraseña valida que el usuario pertenezca a Danlí.
+- Eliminar usa desactivación (activo=0) para conservar historial y evitar errores de claves foráneas.
+
+IMPORTANTE:
+La tabla usuarios debe tener:
+    sede_id INT
+    activo INT/BOOLEAN
+
+Y las tablas alumnos/docentes deben tener:
+    usuario_id
+    sede_id
+
+Si tu base todavía no tiene usuarios.sede_id:
+    ALTER TABLE usuarios ADD COLUMN sede_id INT NOT NULL DEFAULT 4;
