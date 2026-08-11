@@ -44,6 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $tipo = trim($_POST['tipo'] ?? '');
 
+    // La carrera solo aplica a alumnos.
+    $carrera_id = !empty($_POST['carrera_id'])
+        ? (int) $_POST['carrera_id']
+        : null;
+
     $password = $_POST['password'] ?? '';
 
     $confirm_password =
@@ -77,6 +82,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $error =
             "El tipo de usuario seleccionado no es válido.";
+
+    }
+
+    elseif (
+        $tipo === 'usuario' &&
+        empty($carrera_id)
+    ) {
+
+        $error =
+            "Seleccione una carrera para el alumno.";
 
     }
 
@@ -174,8 +189,128 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmtInsert->execute()) {
 
-                // Convertir el tipo a texto para mostrar
+                $usuario_id = (int) $stmtInsert->insert_id;
 
+                $stmtInsert->close();
+
+                /*
+                 * ALUMNO:
+                 * Crear automáticamente el registro en alumnos
+                 * y vincularlo mediante usuario_id.
+                 */
+                if ($tipo === 'usuario') {
+
+                    // Confirmar que la carrera existe.
+                    $stmtCarrera = $conn->prepare("
+                        SELECT id
+                        FROM carreras
+                        WHERE id = ?
+                        LIMIT 1
+                    ");
+
+                    $stmtCarrera->bind_param(
+                        "i",
+                        $carrera_id
+                    );
+
+                    $stmtCarrera->execute();
+
+                    $resultCarrera =
+                        $stmtCarrera->get_result();
+
+                    if ($resultCarrera->num_rows === 0) {
+
+                        $stmtCarrera->close();
+
+                        // El usuario no debe quedar creado sin su alumno.
+                        $conn->query("
+                            DELETE FROM usuarios
+                            WHERE id = " . $usuario_id
+                        );
+
+                        throw new Exception(
+                            "La carrera seleccionada no existe."
+                        );
+                    }
+
+                    $stmtCarrera->close();
+
+
+                    // Evitar duplicar el alumno por usuario.
+                    $stmtAlumnoExiste = $conn->prepare("
+                        SELECT id
+                        FROM alumnos
+                        WHERE usuario_id = ?
+                        LIMIT 1
+                    ");
+
+                    $stmtAlumnoExiste->bind_param(
+                        "i",
+                        $usuario_id
+                    );
+
+                    $stmtAlumnoExiste->execute();
+
+                    $resultAlumnoExiste =
+                        $stmtAlumnoExiste->get_result();
+
+                    $alumnoExiste =
+                        $resultAlumnoExiste->num_rows > 0;
+
+                    $stmtAlumnoExiste->close();
+
+
+                    if (!$alumnoExiste) {
+
+                        $stmtAlumno = $conn->prepare("
+                            INSERT INTO alumnos
+                            (
+                                usuario_id,
+                                nombre,
+                                carrera_id,
+                                sede_id
+                            )
+                            VALUES
+                            (
+                                ?,
+                                ?,
+                                ?,
+                                ?
+                            )
+                        ");
+
+                        $stmtAlumno->bind_param(
+                            "isii",
+                            $usuario_id,
+                            $nombre,
+                            $carrera_id,
+                            $sede_id
+                        );
+
+                        if (!$stmtAlumno->execute()) {
+
+                            $mensajeError =
+                                $stmtAlumno->error;
+
+                            $stmtAlumno->close();
+
+                            $conn->query("
+                                DELETE FROM usuarios
+                                WHERE id = " . $usuario_id
+                            );
+
+                            throw new Exception(
+                                "No se pudo vincular el alumno: "
+                                . $mensajeError
+                            );
+                        }
+
+                        $stmtAlumno->close();
+                    }
+                }
+
+
+                // Convertir el tipo a texto para mostrar.
                 if ($tipo === 'admin') {
 
                     $tipoTexto =
@@ -222,21 +357,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <strong>Danlí</strong>
                 ";
 
+                if ($tipo === 'usuario') {
 
-                // Limpiar campos
+                    $success .= "
+                        <br>
+                        <i class='fas fa-link me-1'></i>
+                        Alumno vinculado correctamente con su usuario.
+                    ";
+                }
 
+
+                // Limpiar campos.
                 $username = "";
                 $nombre = "";
+                $carrera_id = null;
 
             } else {
 
                 $error =
                     "Error al crear el usuario: "
                     . $stmtInsert->error;
+
+                $stmtInsert->close();
             }
-
-
-            $stmtInsert->close();
         }
 
 
@@ -592,6 +735,85 @@ include 'includes/header.php';
 
 
                         <!-- ==================================================
+                             CARRERA - SOLO ALUMNO
+                        ================================================== -->
+
+                        <div
+                            class="mb-3"
+                            id="contenedorCarrera"
+                            style="display:none;"
+                        >
+
+                            <label
+                                for="carrera_id"
+                                class="form-label"
+                            >
+
+                                <strong>
+                                    Carrera *
+                                </strong>
+
+                            </label>
+
+                            <select
+                                class="form-select"
+                                id="carrera_id"
+                                name="carrera_id"
+                            >
+
+                                <option value="">
+                                    Seleccione la carrera
+                                </option>
+
+                                <?php
+                                $carreras =
+                                    $conn->query("
+                                        SELECT id, nombre
+                                        FROM carreras
+                                        ORDER BY nombre ASC
+                                    ");
+
+                                if ($carreras):
+
+                                    while (
+                                        $carrera =
+                                        $carreras->fetch_assoc()
+                                    ):
+                                ?>
+
+                                    <option
+                                        value="<?= (int)$carrera['id'] ?>"
+                                        <?= (
+                                            (int)($carrera_id ?? 0)
+                                            ===
+                                            (int)$carrera['id']
+                                        )
+                                            ? 'selected'
+                                            : ''
+                                        ?>
+                                    >
+                                        <?= htmlspecialchars(
+                                            $carrera['nombre'],
+                                            ENT_QUOTES,
+                                            'UTF-8'
+                                        ) ?>
+                                    </option>
+
+                                <?php
+                                    endwhile;
+                                endif;
+                                ?>
+
+                            </select>
+
+                            <div class="form-text">
+                                Solo se solicita para usuarios tipo Alumno.
+                            </div>
+
+                        </div>
+
+
+                        <!-- ==================================================
                              CONTRASEÑA
                         ================================================== -->
 
@@ -764,55 +986,118 @@ include 'includes/header.php';
 <script>
 
 // ======================================================
-// VALIDAR CONTRASEÑAS
+// MOSTRAR CARRERA SOLAMENTE PARA ALUMNO
 // ======================================================
 
-document
-    .querySelector('form')
-    ?.addEventListener(
-        'submit',
-        function(event) {
+document.addEventListener(
+    'DOMContentLoaded',
+    function () {
 
-            const password =
-                document.getElementById(
-                    'password'
-                ).value;
+        const tipo =
+            document.getElementById('tipo');
 
-            const confirmPassword =
-                document.getElementById(
-                    'confirm_password'
-                ).value;
+        const contenedorCarrera =
+            document.getElementById('contenedorCarrera');
+
+        const carrera =
+            document.getElementById('carrera_id');
 
 
-            if (
-                password !==
-                confirmPassword
-            ) {
+        function actualizarCarrera() {
 
-                event.preventDefault();
+            if (tipo.value === 'usuario') {
 
-                alert(
-                    'Las contraseñas no coinciden.'
-                );
+                // Alumno: mostrar y exigir carrera.
+                contenedorCarrera.style.display = 'block';
+                carrera.required = true;
 
-                return;
+            } else {
+
+                // Docente y Administrador:
+                // NO mostrar carrera.
+                contenedorCarrera.style.display = 'none';
+                carrera.required = false;
+                carrera.value = '';
             }
-
-
-            if (
-                password.length < 6
-            ) {
-
-                event.preventDefault();
-
-                alert(
-                    'La contraseña debe tener al menos 6 caracteres.'
-                );
-
-            }
-
         }
-    );
+
+
+        tipo.addEventListener(
+            'change',
+            actualizarCarrera
+        );
+
+        actualizarCarrera();
+
+
+        // ==================================================
+        // VALIDAR FORMULARIO
+        // ==================================================
+
+        document
+            .querySelector('form')
+            ?.addEventListener(
+                'submit',
+                function(event) {
+
+                    const password =
+                        document.getElementById(
+                            'password'
+                        ).value;
+
+                    const confirmPassword =
+                        document.getElementById(
+                            'confirm_password'
+                        ).value;
+
+
+                    if (
+                        password !==
+                        confirmPassword
+                    ) {
+
+                        event.preventDefault();
+
+                        alert(
+                            'Las contraseñas no coinciden.'
+                        );
+
+                        return;
+                    }
+
+
+                    if (
+                        password.length < 6
+                    ) {
+
+                        event.preventDefault();
+
+                        alert(
+                            'La contraseña debe tener al menos 6 caracteres.'
+                        );
+
+                        return;
+                    }
+
+
+                    if (
+                        tipo.value === 'usuario' &&
+                        carrera.value === ''
+                    ) {
+
+                        event.preventDefault();
+
+                        alert(
+                            'Seleccione una carrera para el alumno.'
+                        );
+
+                    }
+
+                }
+            );
+
+    }
+);
 
 </script>
 

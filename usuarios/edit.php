@@ -62,7 +62,8 @@ $stmt = $conn->prepare("
         u.role,
         u.sede_id,
         a.id AS alumno_id,
-        a.nombre AS nombre_alumno
+        a.nombre AS nombre_alumno,
+        a.carrera_id AS carrera_id
     FROM usuarios u
     LEFT JOIN alumnos a
         ON u.id = a.usuario_id
@@ -125,6 +126,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nombre_alumno =
         trim($_POST['nombre_alumno'] ?? '');
 
+    // La carrera solamente aplica a alumnos.
+    $carrera_id = !empty($_POST['carrera_id'])
+        ? (int) $_POST['carrera_id']
+        : null;
+
     $password =
         $_POST['password'] ?? '';
 
@@ -157,6 +163,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $error =
             "Tipo de usuario no válido.";
+
+    }
+
+    elseif (
+        $tipo === 'usuario' &&
+        empty($nombre_alumno)
+    ) {
+
+        $error =
+            "Ingrese el nombre del alumno.";
+
+    }
+
+    elseif (
+        $tipo === 'usuario' &&
+        empty($carrera_id)
+    ) {
+
+        $error =
+            "Seleccione una carrera para el alumno.";
 
     }
 
@@ -303,6 +329,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($tipo === 'usuario') {
 
+                    // Verificar que la carrera exista.
+                    $stmtCarrera = $conn->prepare("
+                        SELECT id
+                        FROM carreras
+                        WHERE id = ?
+                        LIMIT 1
+                    ");
+
+                    $stmtCarrera->bind_param(
+                        "i",
+                        $carrera_id
+                    );
+
+                    $stmtCarrera->execute();
+
+                    $resultCarrera =
+                        $stmtCarrera->get_result();
+
+                    if ($resultCarrera->num_rows === 0) {
+
+                        $stmtCarrera->close();
+
+                        throw new Exception(
+                            "La carrera seleccionada no existe."
+                        );
+                    }
+
+                    $stmtCarrera->close();
+
 
                     // ------------------------------------------
                     // VERIFICAR SI YA EXISTE EN alumnos
@@ -344,13 +399,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmtUpdateAlumno =
                             $conn->prepare("
                                 UPDATE alumnos
-                                SET nombre = ?
+                                SET
+                                    nombre = ?,
+                                    carrera_id = ?
                                 WHERE id = ?
                             ");
 
                         $stmtUpdateAlumno->bind_param(
-                            "si",
+                            "sii",
                             $nombre_alumno,
+                            $carrera_id,
                             $alumno_id
                         );
 
@@ -383,16 +441,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 INSERT INTO alumnos
                                 (
                                     usuario_id,
-                                    nombre
+                                    nombre,
+                                    carrera_id
                                 )
                                 VALUES
-                                (?, ?)
+                                (?, ?, ?)
                             ");
 
                         $stmtInsertAlumno->bind_param(
-                            "is",
+                            "isi",
                             $id,
-                            $nombre_alumno
+                            $nombre_alumno,
+                            $carrera_id
                         );
 
 
@@ -409,9 +469,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
                         $stmtInsertAlumno->close();
-
                     }
-
 
                 } else {
 
@@ -477,6 +535,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $usuario['nombre_alumno'] =
                     $nombre_alumno;
+
+                $usuario['carrera_id'] =
+                    $carrera_id;
 
 
             } catch (Exception $e) {
@@ -604,7 +665,7 @@ include '../includes/header.php';
                                 "
                             ></i>
 
-                            <?php echo htmlspecialchars($success); ?>
+                            <?php echo $success; ?>
 
                             <button
                                 type="button"
@@ -853,6 +914,89 @@ include '../includes/header.php';
 
 
                         <!-- ==================================================
+                             CARRERA - SOLO ALUMNO
+                        ================================================== -->
+
+                        <div
+                            id="carrera_field"
+                            class="mb-3"
+                            <?php
+                            echo (
+                                $tipo_actual !== 'usuario'
+                            )
+                                ? 'style="display:none;"'
+                                : '';
+                            ?>
+                        >
+
+                            <label
+                                for="carrera_id"
+                                class="form-label"
+                            >
+                                <strong>
+                                    Carrera *
+                                </strong>
+                            </label>
+
+                            <select
+                                class="form-select"
+                                id="carrera_id"
+                                name="carrera_id"
+                            >
+
+                                <option value="">
+                                    Seleccione una carrera
+                                </option>
+
+                                <?php
+                                $carreras =
+                                    $conn->query("
+                                        SELECT id, nombre
+                                        FROM carreras
+                                        ORDER BY nombre ASC
+                                    ");
+
+                                if ($carreras):
+
+                                    while (
+                                        $carrera =
+                                        $carreras->fetch_assoc()
+                                    ):
+                                ?>
+
+                                    <option
+                                        value="<?= (int)$carrera['id'] ?>"
+                                        <?= (
+                                            (int)($usuario['carrera_id'] ?? 0)
+                                            ===
+                                            (int)$carrera['id']
+                                        )
+                                            ? 'selected'
+                                            : ''
+                                        ?>
+                                    >
+                                        <?= htmlspecialchars(
+                                            $carrera['nombre'],
+                                            ENT_QUOTES,
+                                            'UTF-8'
+                                        ) ?>
+                                    </option>
+
+                                <?php
+                                    endwhile;
+                                endif;
+                                ?>
+
+                            </select>
+
+                            <small class="text-muted">
+                                La carrera solamente aplica a alumnos.
+                            </small>
+
+                        </div>
+
+
+                        <!-- ==================================================
                              CONTRASEÑA
                         ================================================== -->
 
@@ -1036,36 +1180,42 @@ include '../includes/header.php';
 function toggleAlumnoFields() {
 
     const tipo =
-        document.getElementById(
-            'tipo'
-        ).value;
-
+        document.getElementById('tipo').value;
 
     const camposAlumno =
-        document.getElementById(
-            'alumno_fields'
-        );
+        document.getElementById('alumno_fields');
 
+    const campoCarrera =
+        document.getElementById('carrera_field');
 
     const nombreAlumno =
-        document.getElementById(
-            'nombre_alumno'
-        );
+        document.getElementById('nombre_alumno');
+
+    const carrera =
+        document.getElementById('carrera_id');
 
 
     if (tipo === 'usuario') {
 
-        camposAlumno.style.display =
-            'block';
+        // Alumno: mostrar nombre y carrera.
+        camposAlumno.style.display = 'block';
+        campoCarrera.style.display = 'block';
+
+        nombreAlumno.required = true;
+        carrera.required = true;
 
     } else {
 
-        camposAlumno.style.display =
-            'none';
+        // Docente y Administrador:
+        // no muestran ni solicitan datos de alumno.
+        camposAlumno.style.display = 'none';
+        campoCarrera.style.display = 'none';
 
-        nombreAlumno.value =
-            '';
+        nombreAlumno.required = false;
+        carrera.required = false;
 
+        nombreAlumno.value = '';
+        carrera.value = '';
     }
 
 }
@@ -1105,6 +1255,39 @@ document.querySelector('form')
                 document.getElementById(
                     'confirm_password'
                 ).value;
+
+            const tipo =
+                document.getElementById('tipo').value;
+
+            const carrera =
+                document.getElementById('carrera_id').value;
+
+            const nombreAlumno =
+                document.getElementById('nombre_alumno').value.trim();
+
+
+            // Si es alumno, debe tener nombre y carrera.
+            if (tipo === 'usuario' && nombreAlumno === '') {
+
+                event.preventDefault();
+
+                alert(
+                    'Ingrese el nombre del alumno.'
+                );
+
+                return;
+            }
+
+            if (tipo === 'usuario' && carrera === '') {
+
+                event.preventDefault();
+
+                alert(
+                    'Seleccione una carrera para el alumno.'
+                );
+
+                return;
+            }
 
 
             // Si se escribió contraseña,
