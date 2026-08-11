@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sqlCheck = "
             SELECT id
             FROM usuarios
-            WHERE username = ?
+            WHERE LOWER(username) = LOWER(?)
             LIMIT 1
         ";
 
@@ -121,6 +121,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'El correo electrónico ya está registrado.';
 
             } else {
+
+                // Verificar también que el correo no pertenezca
+                // a otro alumno.
+                $sqlAlumnoCheck = "
+                    SELECT id
+                    FROM alumnos
+                    WHERE LOWER(email) = LOWER(?)
+                    LIMIT 1
+                ";
+
+                $stmtAlumnoCheck = $conn->prepare($sqlAlumnoCheck);
+
+                if (!$stmtAlumnoCheck) {
+
+                    $error_msg =
+                        'Error al verificar el correo del alumno: '
+                        . $conn->error;
+
+                } else {
+
+                    $stmtAlumnoCheck->bind_param('s', $email);
+                    $stmtAlumnoCheck->execute();
+
+                    $resultAlumnoCheck =
+                        $stmtAlumnoCheck->get_result();
+
+                    if ($resultAlumnoCheck->num_rows > 0) {
+
+                        $error_msg =
+                            'El correo electrónico ya pertenece a otro alumno.';
+
+                    }
+
+                    $stmtAlumnoCheck->close();
+                }
+
+                if (empty($error_msg)) {
 
 
                 // =================================================
@@ -162,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ?,
                             ?,
                             ?,
-                            'usuario',
+                            'alumno',
                             4
                         )
                     ";
@@ -278,7 +315,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
                     $success_msg =
-                        'Alumno registrado correctamente.';
+                        'Alumno y usuario de acceso registrados correctamente. '
+                        . 'El alumno ya quedó vinculado a su cuenta para solicitar préstamos.';
 
 
                     // Limpiar campos después de guardar
@@ -303,6 +341,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $error_msg =
                         $e->getMessage();
+
+                }
 
                 }
 

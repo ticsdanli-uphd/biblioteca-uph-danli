@@ -1,4 +1,4 @@
-S
+
 <?php
 include '../includes/session.php';
 include '../config/db.php';
