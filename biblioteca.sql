@@ -191,6 +191,8 @@ CREATE TABLE `bibliografia` (
   `observaciones` text DEFAULT NULL,
   `cantidad` int NOT NULL DEFAULT 0,
   `foto` varchar(255) DEFAULT NULL,
+  `foto_frontal` varchar(255) DEFAULT NULL,
+  `foto_trasera` varchar(255) DEFAULT NULL,
   `sede_id` int NOT NULL DEFAULT 4,
   `ingresado_por` int DEFAULT NULL,
   `modificado_por` int DEFAULT NULL,
@@ -461,3 +463,25 @@ DESCRIBE alumnos;
 DESCRIBE docentes;
 DESCRIBE solicitudes_prestamo;
 DESCRIBE registro_visitas;
+
+-- ============================================================
+-- COMPATIBILIDAD / VERIFICACIÓN
+-- ============================================================
+-- Esta base usa user_id como nombre estándar en:
+-- registro_visitas, reservas_libros y solicitudes_prestamo.
+-- No usar usuario_id en estas tablas.
+--
+-- En usuarios, Danlí es sede_id = 4.
+-- Los registros de alumnos y docentes se vinculan mediante usuario_id.
+-- ============================================================
+
+SELECT 'OK - biblioteca UPH' AS resultado;
+SELECT id, nombre FROM sedes WHERE id = 4;
+SELECT COUNT(*) AS usuarios_danli FROM usuarios WHERE sede_id = 4;
+SELECT COUNT(*) AS alumnos_danli FROM alumnos WHERE sede_id = 4;
+SELECT COUNT(*) AS docentes_danli FROM docentes WHERE sede_id = 4;
+SELECT COUNT(*) AS libros_danli FROM bibliografia WHERE sede_id = 4;
+
+
+ALTER TABLE bibliografia
+MODIFY COLUMN ubicacion VARCHAR(150) NULL;

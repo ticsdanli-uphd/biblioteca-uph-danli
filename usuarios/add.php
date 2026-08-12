@@ -1,4 +1,9 @@
 <?php
+// ============================================================
+// usuarios/add.php
+// CREAR USUARIO - BIBLIOTECA UPH
+// Sede fija: Danlí (4)
+// ============================================================
 
 require_once '../includes/session.php';
 require_once '../config/db.php';
@@ -10,6 +15,7 @@ requiere_admin();
 $error = '';
 $success = '';
 
+$sede_id = 4;
 
 // ============================================================
 // PROCESAR FORMULARIO
@@ -22,600 +28,411 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $telefono = trim($_POST['telefono'] ?? '');
     $tipo = strtolower(trim($_POST['tipo'] ?? ''));
-
-    $password = $_POST['password'] ?? '';
-    $confirm = $_POST['confirm_password'] ?? '';
-
     $carrera_id = !empty($_POST['carrera_id'])
-        ? (int) $_POST['carrera_id']
+        ? (int)$_POST['carrera_id']
         : null;
 
-// La carrera pertenece únicamente al perfil de alumno.
-if ($tipo === 'docente' || $tipo === 'admin') {
-    $carrera_id = null;
-}
-
+    $password = $_POST['password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
 
     // ========================================================
     // VALIDACIONES
     // ========================================================
 
-    if (
-        $username === '' ||
-        $nombre === '' ||
-        $tipo === '' ||
-        $password === ''
-    ) {
+    if ($username === '') {
 
-        $error = 'Complete todos los campos obligatorios.';
+        $error = 'Debe ingresar el usuario o correo.';
 
-    } elseif (
-        !in_array(
-            $tipo,
-            ['admin', 'docente', 'alumno'],
-            true
-        )
-    ) {
+    } elseif ($nombre === '') {
 
-        $error = 'Seleccione un tipo de usuario válido.';
+        $error = 'Debe ingresar el nombre completo.';
 
-    } elseif (
-        $password !== $confirm
-    ) {
+    } elseif (!in_array($tipo, ['admin', 'docente', 'alumno'], true)) {
+
+        $error = 'Debe seleccionar un tipo de usuario válido.';
+
+    } elseif ($password === '') {
+
+        $error = 'Debe ingresar una contraseña.';
+
+    } elseif (strlen($password) < 6) {
+
+        $error = 'La contraseña debe tener al menos 6 caracteres.';
+
+    } elseif ($password !== $confirm_password) {
 
         $error = 'Las contraseñas no coinciden.';
 
-    } elseif (
-        strlen($password) < 6
-    ) {
+    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
-        $error =
-            'La contraseña debe tener al menos 6 caracteres.';
+        $error = 'El correo electrónico no es válido.';
 
-    } elseif (
-        $email !== '' &&
-        !filter_var(
-            $email,
-            FILTER_VALIDATE_EMAIL
-        )
-    ) {
+    }
 
-        $error =
-            'El correo electrónico no es válido.';
+    // ========================================================
+    // VALIDACIÓN DE CARRERA
+    // SOLO ALUMNOS PUEDEN TENER CARRERA
+    // ========================================================
 
-    } elseif (
-        $tipo === 'alumno' &&
-        empty($carrera_id)
-    ) {
+    if ($error === '') {
 
-        $error =
-            'Para registrar un alumno debe seleccionar una carrera.';
-
-    } elseif (
-        in_array($tipo, ['alumno', 'docente'], true) &&
-        !empty($carrera_id)
-    ) {
-
-        // Verificar que la carrera realmente exista para evitar
-        // errores de clave foránea al guardar el usuario.
-        $stmtCarrera = $conn->prepare("
-            SELECT id
-            FROM carreras
-            WHERE id = ?
-            LIMIT 1
-        ");
-
-        if (!$stmtCarrera) {
-
-            $error =
-                'No se pudo verificar la carrera: '
-                . $conn->error;
-
-        } else {
-
-            $stmtCarrera->bind_param(
-                'i',
-                $carrera_id
-            );
-
-            $stmtCarrera->execute();
-
-            $existeCarrera =
-                $stmtCarrera->get_result()->num_rows === 1;
-
-            $stmtCarrera->close();
-
-            if (!$existeCarrera) {
-
-                $error =
-                    'La carrera seleccionada no existe. '
-                    . 'Actualice la lista y seleccione una carrera válida.';
-            }
+        if ($tipo !== 'alumno') {
+            $carrera_id = null;
         }
 
-    } else {
+        if ($tipo === 'alumno' && $carrera_id !== null) {
 
+            $stmt = $conn->prepare("
+                SELECT id
+                FROM carreras
+                WHERE id = ?
+                LIMIT 1
+            ");
 
-        // ====================================================
-        // NORMALIZAR CORREO
-        // ====================================================
-
-        $username = strtolower($username);
-
-        if ($email !== '') {
-            $email = strtolower($email);
-        }
-
-
-        // ====================================================
-        // COMPROBAR USUARIO EXISTENTE
-        // ====================================================
-
-        $stmt = $conn->prepare("
-            SELECT id
-            FROM usuarios
-            WHERE LOWER(username) = LOWER(?)
-            LIMIT 1
-        ");
-
-        if (!$stmt) {
-
-            $error =
-                'Error preparando la consulta de usuario: '
-                . $conn->error;
-
-        } else {
-
-            $stmt->bind_param(
-                's',
-                $username
-            );
-
+            $stmt->bind_param('i', $carrera_id);
             $stmt->execute();
 
-            $exists =
-                $stmt->get_result()->num_rows > 0;
+            $carreraExiste = $stmt->get_result()->num_rows > 0;
 
             $stmt->close();
 
-
-            if ($exists) {
-
-                $error =
-                    'El usuario/correo ya está registrado.';
-
-            } else {
-
-
-                // =================================================
-                // CORREO PARA TABLA ALUMNOS
-                // =================================================
-
-                $correo =
-                    $email !== ''
-                    ? $email
-                    : $username;
-
-
-                // =================================================
-                // COMPROBAR CORREO EN ALUMNOS
-                // =================================================
-
-                if (
-                    $tipo === 'alumno' &&
-                    $correo !== ''
-                ) {
-
-                    $stmt = $conn->prepare("
-                        SELECT id
-                        FROM alumnos
-                        WHERE LOWER(email) = LOWER(?)
-                        LIMIT 1
-                    ");
-
-                    if ($stmt) {
-
-                        $stmt->bind_param(
-                            's',
-                            $correo
-                        );
-
-                        $stmt->execute();
-
-                        $correoExiste =
-                            $stmt->get_result()->num_rows > 0;
-
-                        $stmt->close();
-
-                        if ($correoExiste) {
-
-                            $error =
-                                'Este correo ya pertenece a un alumno registrado.';
-                        }
-                    }
-                }
-
-
-                // =================================================
-                // CREAR USUARIO
-                // =================================================
-
-                if ($error === '') {
-
-                    $hash =
-                        password_hash(
-                            $password,
-                            PASSWORD_DEFAULT
-                        );
-
-                    $conn->begin_transaction();
-
-                    try {
-
-
-                        // =========================================
-                        // SEDE DANLÍ
-                        // =========================================
-
-                        $sede_id =
-                            (int) DANLI_SEDE_ID;
-
-
-                        // =========================================
-                        // CREAR USUARIO
-                        // =========================================
-
-                        $stmt = $conn->prepare("
-                            INSERT INTO usuarios
-                            (
-                                username,
-                                nombre,
-                                password,
-                                role,
-                                sede_id,
-                                activo
-                            )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                1
-                            )
-                        ");
-
-                        if (!$stmt) {
-
-                            throw new Exception(
-                                'No se pudo preparar el registro del usuario: '
-                                . $conn->error
-                            );
-                        }
-
-
-                        $stmt->bind_param(
-                            'ssssi',
-                            $username,
-                            $nombre,
-                            $hash,
-                            $tipo,
-                            $sede_id
-                        );
-
-
-                        if (!$stmt->execute()) {
-
-                            throw new Exception(
-                                'No se pudo crear el usuario: '
-                                . $stmt->error
-                            );
-                        }
-
-
-                        // =========================================
-                        // ID DEL USUARIO
-                        // =========================================
-
-                        $usuario_id =
-                            (int) $stmt->insert_id;
-
-
-                        $stmt->close();
-
-
-                        // =================================================
-                        // SI ES ALUMNO
-                        // CREAR AUTOMÁTICAMENTE EN TABLA ALUMNOS
-                        // =================================================
-
-                        if ($tipo === 'alumno') {
-
-
-                            $stmt = $conn->prepare("
-                                INSERT INTO alumnos
-                                (
-                                    usuario_id,
-                                    nombre,
-                                    telefono,
-                                    email,
-                                    carrera_id,
-                                    sede_id
-                                )
-                                VALUES
-                                (
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?
-                                )
-                            ");
-
-
-                            if (!$stmt) {
-
-                                throw new Exception(
-                                    'No se pudo preparar el registro del alumno: '
-                                    . $conn->error
-                                );
-                            }
-
-
-                            $stmt->bind_param(
-                                'isssii',
-                                $usuario_id,
-                                $nombre,
-                                $telefono,
-                                $correo,
-                                $carrera_id,
-                                $sede_id
-                            );
-
-
-                            if (!$stmt->execute()) {
-
-                                throw new Exception(
-                                    'No se pudo crear el registro del alumno: '
-                                    . $stmt->error
-                                );
-                            }
-
-
-                            $alumno_id =
-                                (int) $stmt->insert_id;
-
-
-                            $stmt->close();
-
-
-                            // =============================================
-                            // CONFIRMAR VINCULACIÓN
-                            // =============================================
-
-                            $stmt = $conn->prepare("
-                                SELECT
-                                    a.id,
-                                    a.usuario_id,
-                                    a.nombre,
-                                    a.carrera_id
-                                FROM alumnos a
-                                WHERE a.id = ?
-                                  AND a.usuario_id = ?
-                                LIMIT 1
-                            ");
-
-
-                            if (!$stmt) {
-
-                                throw new Exception(
-                                    'No se pudo comprobar la vinculación del alumno.'
-                                );
-                            }
-
-
-                            $stmt->bind_param(
-                                'ii',
-                                $alumno_id,
-                                $usuario_id
-                            );
-
-
-                            $stmt->execute();
-
-                            $vinculado =
-                                $stmt->get_result()->num_rows === 1;
-
-                            $stmt->close();
-
-
-                            if (!$vinculado) {
-
-                                throw new Exception(
-                                    'El usuario fue creado, pero no se pudo confirmar '
-                                    . 'la vinculación con el alumno.'
-                                );
-                            }
-                        }
-
-
-                        // =================================================
-                        // SI ES DOCENTE
-                        // =================================================
-
-                        elseif ($tipo === 'docente') {
-
-
-                            $stmt = $conn->prepare("
-                                INSERT INTO docentes
-                                (
-                                    usuario_id,
-                                    nombre,
-                                    telefono,
-                                    email,
-                                    carrera_id,
-                                    sede_id
-                                )
-                                VALUES
-                                (
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?
-                                )
-                            ");
-
-
-                            if (!$stmt) {
-
-                                throw new Exception(
-                                    'No se pudo preparar el registro del docente: '
-                                    . $conn->error
-                                );
-                            }
-
-
-                            $stmt->bind_param(
-                                'isssii',
-                                $usuario_id,
-                                $nombre,
-                                $telefono,
-                                $correo,
-                                $carrera_id,
-                                $sede_id
-                            );
-
-
-                            if (!$stmt->execute()) {
-
-                                throw new Exception(
-                                    'No se pudo crear el registro del docente: '
-                                    . $stmt->error
-                                );
-                            }
-
-
-                            $stmt->close();
-                        }
-
-
-                        // =================================================
-                        // CONFIRMAR TRANSACCIÓN
-                        // =================================================
-
-                        $conn->commit();
-
-
-                        // =================================================
-                        // MENSAJE
-                        // =================================================
-
-                        if ($tipo === 'alumno') {
-
-                            $success =
-                                'Alumno registrado correctamente. '
-                                . 'Su usuario quedó vinculado automáticamente '
-                                . 'con su registro de alumno.';
-
-                        } elseif ($tipo === 'docente') {
-
-                            $success =
-                                'Docente registrado correctamente. '
-                                . 'Su usuario quedó vinculado automáticamente '
-                                . 'con su registro de docente.';
-
-                        } else {
-
-                            $success =
-                                'Administrador registrado correctamente.';
-                        }
-
-
-                        // Limpiar formulario
-                        $_POST = [];
-
-
-                    } catch (Throwable $e) {
-
-                        $conn->rollback();
-
-                        $error =
-                            'No se pudo crear el usuario: '
-                            . $e->getMessage();
-                    }
-                }
+            if (!$carreraExiste) {
+                $error = 'La carrera seleccionada no existe.';
             }
         }
     }
-}
 
+    // ========================================================
+    // COMPROBAR USUARIO EXISTENTE
+    // ========================================================
+
+    if ($error === '') {
+
+        $stmt = $conn->prepare("
+            SELECT id, username
+            FROM usuarios
+            WHERE username = ?
+            LIMIT 1
+        ");
+
+        $stmt->bind_param('s', $username);
+        $stmt->execute();
+
+        $existente = $stmt->get_result()->fetch_assoc();
+
+        $stmt->close();
+
+        if ($existente) {
+
+            $error =
+                'El usuario "' .
+                htmlspecialchars($username) .
+                '" ya está registrado. Utilice otro usuario.';
+
+        }
+    }
+
+    // ========================================================
+    // CREAR USUARIO
+    // ========================================================
+
+    if ($error === '') {
+
+        $conn->begin_transaction();
+
+        try {
+
+            $hash = password_hash(
+                $password,
+                PASSWORD_DEFAULT
+            );
+
+            // ------------------------------------------------
+            // CREAR USUARIO PRINCIPAL
+            // ------------------------------------------------
+
+            $stmt = $conn->prepare("
+                INSERT INTO usuarios
+                (
+                    username,
+                    nombre,
+                    email,
+                    telefono,
+                    password,
+                    role,
+                    sede_id,
+                    activo
+                )
+                VALUES
+                (
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    1
+                )
+            ");
+
+            $stmt->bind_param(
+                'ssssssi',
+                $username,
+                $nombre,
+                $email,
+                $telefono,
+                $hash,
+                $tipo,
+                $sede_id
+            );
+
+            if (!$stmt->execute()) {
+                throw new Exception(
+                    'No se pudo crear el usuario: ' .
+                    $stmt->error
+                );
+            }
+
+            $usuario_id = $stmt->insert_id;
+
+            $stmt->close();
+
+            // ------------------------------------------------
+            // ALUMNO
+            // ------------------------------------------------
+
+            if ($tipo === 'alumno') {
+
+                if ($carrera_id !== null) {
+
+                    $stmt = $conn->prepare("
+                        INSERT INTO alumnos
+                        (
+                            usuario_id,
+                            nombre,
+                            telefono,
+                            email,
+                            carrera_id,
+                            sede_id,
+                            activo
+                        )
+                        VALUES
+                        (
+                            ?,
+                            ?,
+                            ?,
+                            ?,
+                            ?,
+                            ?,
+                            1
+                        )
+                    ");
+
+                    $stmt->bind_param(
+                        'isssii',
+                        $usuario_id,
+                        $nombre,
+                        $telefono,
+                        $email,
+                        $carrera_id,
+                        $sede_id
+                    );
+
+                } else {
+
+                    $stmt = $conn->prepare("
+                        INSERT INTO alumnos
+                        (
+                            usuario_id,
+                            nombre,
+                            telefono,
+                            email,
+                            carrera_id,
+                            sede_id,
+                            activo
+                        )
+                        VALUES
+                        (
+                            ?,
+                            ?,
+                            ?,
+                            ?,
+                            NULL,
+                            ?,
+                            1
+                        )
+                    ");
+
+                    $stmt->bind_param(
+                        'isssi',
+                        $usuario_id,
+                        $nombre,
+                        $telefono,
+                        $email,
+                        $sede_id
+                    );
+                }
+
+                if (!$stmt->execute()) {
+
+                    throw new Exception(
+                        'Usuario creado, pero no se pudo vincular como alumno: ' .
+                        $stmt->error
+                    );
+                }
+
+                $stmt->close();
+            }
+
+            // ------------------------------------------------
+            // DOCENTE
+            // NO SE SOLICITA CARRERA
+            // ------------------------------------------------
+
+            elseif ($tipo === 'docente') {
+
+                $stmt = $conn->prepare("
+                    INSERT INTO docentes
+                    (
+                        usuario_id,
+                        nombre,
+                        telefono,
+                        email,
+                        carrera_id,
+                        sede_id,
+                        activo
+                    )
+                    VALUES
+                    (
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        NULL,
+                        ?,
+                        1
+                    )
+                ");
+
+                $stmt->bind_param(
+                    'isssi',
+                    $usuario_id,
+                    $nombre,
+                    $telefono,
+                    $email,
+                    $sede_id
+                );
+
+                if (!$stmt->execute()) {
+
+                    throw new Exception(
+                        'Usuario creado, pero no se pudo vincular como docente: ' .
+                        $stmt->error
+                    );
+                }
+
+                $stmt->close();
+            }
+
+            // ------------------------------------------------
+            // ADMINISTRADOR
+            // NO SE CREA EN ALUMNOS NI DOCENTES
+            // ------------------------------------------------
+
+            elseif ($tipo === 'admin') {
+
+                // No se inserta en alumnos
+                // No se inserta en docentes
+            }
+
+            // ------------------------------------------------
+            // CONFIRMAR TODO
+            // ------------------------------------------------
+
+            $conn->commit();
+
+            $_SESSION['success_msg'] =
+                'Usuario "' .
+                $nombre .
+                '" creado correctamente y vinculado a la sede Danlí.';
+
+            header('Location: list.php');
+            exit();
+
+        } catch (Throwable $e) {
+
+            $conn->rollback();
+
+            $error = $e->getMessage();
+        }
+    }
+}
 
 // ============================================================
 // CARRERAS
 // ============================================================
 
-$carreras = $conn->query("
-    SELECT
-        id,
-        nombre
+$carreras = [];
+
+$result = $conn->query("
+    SELECT id, nombre
     FROM carreras
     ORDER BY nombre ASC
 ");
 
-if (!$carreras) {
-    $error = 'No se pudieron cargar las carreras: ' . $conn->error;
+if ($result) {
+
+    while ($row = $result->fetch_assoc()) {
+        $carreras[] = $row;
+    }
 }
 
+// ============================================================
+// HEADER
+// ============================================================
 
 include '../includes/header.php';
-
 ?>
 
 <style>
 
-/* ============================================================
-   CREAR USUARIO
-============================================================ */
-
-.usuario-container {
-    max-width: 1000px;
-    margin: 30px auto;
-}
-
 .usuario-card {
-    border: 0;
-    border-radius: 18px;
-    overflow: hidden;
-    box-shadow: 0 8px 30px rgba(0,0,0,.08);
+    max-width: 950px;
+    margin: 35px auto;
 }
 
 .usuario-header {
     background: linear-gradient(
         135deg,
-        #3159d9,
-        #436ff0
+        #315be5,
+        #4169e8
     );
-    color: #ffffff;
-    padding: 22px 25px;
+
+    color: white;
+    border-radius: 18px 18px 0 0;
+    padding: 25px 30px;
 }
 
-.usuario-header h4 {
-    color: #ffffff !important;
+.usuario-header h2 {
+    margin: 0;
     font-weight: 700;
-    margin-bottom: 3px;
 }
 
 .usuario-header small {
-    color: rgba(255,255,255,.85);
+    opacity: .9;
+}
+
+.usuario-body {
+    background: white;
+    padding: 30px;
+    border-radius: 0 0 18px 18px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.08);
 }
 
 .form-label {
     font-weight: 600;
-    color: #263238;
+    color: #172b4d;
 }
 
 .form-control,
@@ -624,607 +441,323 @@ include '../includes/header.php';
     border-radius: 10px;
 }
 
-.form-control:focus,
-.form-select:focus {
-    border-color: #3159d9;
-    box-shadow:
-        0 0 0 .2rem rgba(49,89,217,.15);
-}
-
-.info-danli {
+.info-sede {
     background: #eef4ff;
-    border-left: 4px solid #3159d9;
-    border-radius: 10px;
-    padding: 14px 16px;
+    border-left: 4px solid #315be5;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 20px;
 }
 
-.info-alumno {
-    display: none;
-    background: #e8f7ef;
-    border-left: 4px solid #198754;
-    border-radius: 10px;
-    padding: 14px 16px;
+.btn-primary {
+    background: #315be5;
+    border-color: #315be5;
 }
 
-.info-docente {
-    display: none;
-    background: #fff5df;
-    border-left: 4px solid #f4a000;
-    border-radius: 10px;
-    padding: 14px 16px;
-}
-
-@media (max-width: 576px) {
-
-    .usuario-container {
-        margin: 15px auto;
-    }
-
-    .card-body {
-        padding: 18px !important;
-    }
-
-    .usuario-header {
-        padding: 18px;
-    }
-
-    .usuario-header h4 {
-        font-size: 21px;
-    }
+.btn-primary:hover {
+    background: #244bd0;
+    border-color: #244bd0;
 }
 
 </style>
 
+<div class="container-fluid">
 
-<div class="container-fluid py-4">
+    <div class="usuario-card">
 
-    <div class="usuario-container">
+        <div class="usuario-header">
 
-        <div class="card usuario-card">
+            <h2>
+                <i class="fas fa-user-plus me-2"></i>
+                Crear usuario
+            </h2>
 
-            <!-- =================================================
-                 ENCABEZADO
-            ================================================== -->
+            <small>
+                Sede Danlí
+            </small>
 
-            <div class="usuario-header">
+        </div>
 
-                <h4>
+        <div class="usuario-body">
 
-                    <i class="fas fa-user-plus me-2"></i>
+            <?php if ($error !== ''): ?>
 
-                    Crear usuario
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
 
-                </h4>
+                    <?= htmlspecialchars($error) ?>
 
-                <small>
+                </div>
 
-                    Sede Danlí
+            <?php endif; ?>
 
-                </small>
+            <?php if (!empty($_SESSION['success_msg'])): ?>
 
-            </div>
+                <div class="alert alert-success">
 
+                    <i class="fas fa-check-circle me-2"></i>
 
-            <!-- =================================================
-                 CUERPO
-            ================================================== -->
+                    <?= htmlspecialchars($_SESSION['success_msg']) ?>
 
-            <div class="card-body p-4">
+                </div>
 
+                <?php unset($_SESSION['success_msg']); ?>
 
-                <!-- ERROR -->
-
-                <?php if ($error): ?>
-
-                    <div class="alert alert-danger">
-
-                        <i class="fas fa-exclamation-circle me-2"></i>
-
-                        <?= htmlspecialchars(
-                            $error,
-                            ENT_QUOTES,
-                            'UTF-8'
-                        ) ?>
-
-                    </div>
-
-                <?php endif; ?>
+            <?php endif; ?>
 
 
-                <!-- ÉXITO -->
+            <form method="POST" autocomplete="off">
 
-                <?php if ($success): ?>
+                <div class="row g-3">
 
-                    <div class="alert alert-success">
+                    <!-- USUARIO -->
 
-                        <i class="fas fa-check-circle me-2"></i>
+                    <div class="col-md-6">
 
-                        <?= htmlspecialchars(
-                            $success,
-                            ENT_QUOTES,
-                            'UTF-8'
-                        ) ?>
+                        <label class="form-label">
+                            Usuario / correo *
+                        </label>
+
+                        <input
+                            type="text"
+                            name="username"
+                            class="form-control"
+                            required
+                            value="<?= htmlspecialchars($_POST['username'] ?? '') ?>"
+                        >
 
                     </div>
 
-                <?php endif; ?>
+
+                    <!-- NOMBRE -->
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Nombre completo *
+                        </label>
+
+                        <input
+                            type="text"
+                            name="nombre"
+                            class="form-control"
+                            required
+                            value="<?= htmlspecialchars($_POST['nombre'] ?? '') ?>"
+                        >
+
+                    </div>
 
 
-                <!-- =================================================
-                     FORMULARIO
-                ================================================== -->
+                    <!-- EMAIL -->
 
-                <form
-                    method="post"
-                    id="formUsuario"
-                    autocomplete="off"
-                >
+                    <div class="col-md-6">
 
-                    <div class="row g-3">
+                        <label class="form-label">
+                            Correo electrónico
+                        </label>
+
+                        <input
+                            type="email"
+                            name="email"
+                            class="form-control"
+                            value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+                        >
+
+                    </div>
 
 
-                        <!-- =============================================
-                             USUARIO
-                        ============================================== -->
+                    <!-- TELEFONO -->
 
-                        <div class="col-md-6">
+                    <div class="col-md-6">
 
-                            <label
-                                class="form-label"
-                                for="username"
+                        <label class="form-label">
+                            Teléfono
+                        </label>
+
+                        <input
+                            type="text"
+                            name="telefono"
+                            class="form-control"
+                            value="<?= htmlspecialchars($_POST['telefono'] ?? '') ?>"
+                        >
+
+                    </div>
+
+
+                    <!-- TIPO -->
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Tipo de usuario *
+                        </label>
+
+                        <select
+                            name="tipo"
+                            id="tipo"
+                            class="form-select"
+                            required
+                        >
+
+                            <option value="">
+                                Seleccione...
+                            </option>
+
+                            <option
+                                value="admin"
+                                <?= (($_POST['tipo'] ?? '') === 'admin') ? 'selected' : '' ?>
                             >
+                                Administrador
+                            </option>
 
-                                Usuario / correo *
-
-                            </label>
-
-                            <input
-                                type="text"
-                                name="username"
-                                id="username"
-                                class="form-control"
-                                required
-                                value="<?= htmlspecialchars(
-                                    $_POST['username'] ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
+                            <option
+                                value="docente"
+                                <?= (($_POST['tipo'] ?? '') === 'docente') ? 'selected' : '' ?>
                             >
+                                Docente
+                            </option>
 
-                        </div>
-
-
-                        <!-- =============================================
-                             NOMBRE
-                        ============================================== -->
-
-                        <div class="col-md-6">
-
-                            <label
-                                class="form-label"
-                                for="nombre"
+                            <option
+                                value="alumno"
+                                <?= (($_POST['tipo'] ?? '') === 'alumno') ? 'selected' : '' ?>
                             >
+                                Alumno
+                            </option>
 
-                                Nombre completo *
+                        </select>
 
-                            </label>
-
-                            <input
-                                type="text"
-                                name="nombre"
-                                id="nombre"
-                                class="form-control"
-                                required
-                                value="<?= htmlspecialchars(
-                                    $_POST['nombre'] ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
-                            >
-
-                        </div>
+                    </div>
 
 
-                        <!-- =============================================
-                             EMAIL
-                        ============================================== -->
+                    <!-- CARRERA -->
 
-                        <div class="col-md-6">
+                    <div
+                        class="col-md-6"
+                        id="contenedorCarrera"
+                    >
 
-                            <label
-                                class="form-label"
-                                for="email"
-                            >
+                        <label class="form-label">
+                            Carrera
+                        </label>
 
-                                Correo electrónico
+                        <select
+                            name="carrera_id"
+                            id="carrera_id"
+                            class="form-select"
+                        >
 
-                            </label>
+                            <option value="">
+                                Seleccione una carrera
+                            </option>
 
-                            <input
-                                type="email"
-                                name="email"
-                                id="email"
-                                class="form-control"
-                                value="<?= htmlspecialchars(
-                                    $_POST['email'] ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
-                            >
-
-                        </div>
-
-
-                        <!-- =============================================
-                             TELÉFONO
-                        ============================================== -->
-
-                        <div class="col-md-6">
-
-                            <label
-                                class="form-label"
-                                for="telefono"
-                            >
-
-                                Teléfono
-
-                            </label>
-
-                            <input
-                                type="text"
-                                name="telefono"
-                                id="telefono"
-                                class="form-control"
-                                value="<?= htmlspecialchars(
-                                    $_POST['telefono'] ?? '',
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
-                            >
-
-                        </div>
-
-
-                        <!-- =============================================
-                             TIPO
-                        ============================================== -->
-
-                        <div class="col-md-6">
-
-                            <label
-                                class="form-label"
-                                for="tipo"
-                            >
-
-                                Tipo de usuario *
-
-                            </label>
-
-                            <select
-                                name="tipo"
-                                id="tipo"
-                                class="form-select"
-                                required
-                            >
-
-                                <option value="">
-
-                                    Seleccione...
-
-                                </option>
+                            <?php foreach ($carreras as $carrera): ?>
 
                                 <option
-                                    value="admin"
+                                    value="<?= (int)$carrera['id'] ?>"
                                     <?= (
-                                        ($_POST['tipo'] ?? '')
-                                        === 'admin'
-                                    )
-                                        ? 'selected'
-                                        : ''
-                                    ?>
+                                        isset($_POST['carrera_id']) &&
+                                        (int)$_POST['carrera_id'] === (int)$carrera['id']
+                                    ) ? 'selected' : '' ?>
                                 >
 
-                                    Administrador
+                                    <?= htmlspecialchars($carrera['nombre']) ?>
 
                                 </option>
 
-                                <option
-                                    value="docente"
-                                    <?= (
-                                        ($_POST['tipo'] ?? '')
-                                        === 'docente'
-                                    )
-                                        ? 'selected'
-                                        : ''
-                                    ?>
-                                >
+                            <?php endforeach; ?>
 
-                                    Docente
+                        </select>
 
-                                </option>
-
-                                <option
-                                    value="alumno"
-                                    <?= (
-                                        ($_POST['tipo'] ?? '')
-                                        === 'alumno'
-                                    )
-                                        ? 'selected'
-                                        : ''
-                                    ?>
-                                >
-
-                                    Alumno
-
-                                </option>
-
-                            </select>
-
-                        </div>
-
-
-                        <!-- =============================================
-                             CARRERA
-                        ============================================== -->
-
-                        <div
-                            class="col-md-6"
-                            id="contenedorCarrera"
-                            style="display:block;"
-                        >
-
-                            <label
-                                class="form-label"
-                                for="carrera_id"
-                            >
-
-                                Carrera
-
-                            </label>
-
-                            <select
-                                name="carrera_id"
-                                id="carrera_id"
-                                class="form-select"
-                            >
-
-                                <option value="">
-
-                                    Seleccione...
-
-                                </option>
-
-
-                                <?php if ($carreras): ?>
-
-                                    <?php
-                                    $hayCarreras = false;
-
-                                    while (
-                                        $c =
-                                        $carreras->fetch_assoc()
-                                    ):
-                                        $hayCarreras = true;
-                                    ?>
-
-                                        <option
-                                            value="<?= (int)$c['id'] ?>"
-                                            <?= (
-                                                (int)(
-                                                    $_POST['carrera_id']
-                                                    ?? 0
-                                                )
-                                                === (int)$c['id']
-                                            )
-                                                ? 'selected'
-                                                : ''
-                                            ?>
-                                        >
-
-                                            <?= htmlspecialchars(
-                                                $c['nombre'],
-                                                ENT_QUOTES,
-                                                'UTF-8'
-                                            ) ?>
-
-                                        </option>
-
-                                    <?php endwhile; ?>
-
-                                    <?php if (!$hayCarreras): ?>
-
-                                        <option value="" disabled>
-                                            No hay carreras registradas en la base de datos
-                                        </option>
-
-                                    <?php endif; ?>
-
-                                <?php endif; ?>
-
-                            </select>
-
-                        </div>
-
-
-                        <!-- =============================================
-                             CONTRASEÑA
-                        ============================================== -->
-
-                        <div class="col-md-6">
-
-                            <label
-                                class="form-label"
-                                for="password"
-                            >
-
-                                Contraseña *
-
-                            </label>
-
-                            <input
-                                type="password"
-                                name="password"
-                                id="password"
-                                class="form-control"
-                                minlength="6"
-                                required
-                            >
-
-                        </div>
-
-
-                        <!-- =============================================
-                             CONFIRMAR
-                        ============================================== -->
-
-                        <div class="col-md-6">
-
-                            <label
-                                class="form-label"
-                                for="confirm_password"
-                            >
-
-                                Confirmar contraseña *
-
-                            </label>
-
-                            <input
-                                type="password"
-                                name="confirm_password"
-                                id="confirm_password"
-                                class="form-control"
-                                minlength="6"
-                                required
-                            >
-
-                        </div>
-
-
-                        <!-- =============================================
-                             INFORMACIÓN DANLÍ
-                        ============================================== -->
-
-                        <div class="col-12">
-
-                            <div class="info-danli">
-
-                                <i class="fas fa-map-marker-alt me-2"></i>
-
-                                <strong>Sede Danlí</strong>
-
-                                <br>
-
-                                <small>
-
-                                    Este usuario será registrado
-                                    exclusivamente en la sede Danlí.
-
-                                </small>
-
-                            </div>
-
-                        </div>
-
-
-                        <!-- =============================================
-                             INFORMACIÓN ALUMNO
-                        ============================================== -->
-
-                        <div
-                            class="col-12"
-                            id="infoAlumno"
-                        >
-
-                            <div class="info-alumno">
-
-                                <i class="fas fa-user-graduate me-2"></i>
-
-                                <strong>Cuenta de alumno</strong>
-
-                                <br>
-
-                                <small>
-
-                                    Al crear este usuario, el sistema
-                                    creará automáticamente su registro
-                                    en <strong>Alumnos</strong> y guardará
-                                    la relación mediante
-                                    <strong>usuario_id</strong>.
-
-                                </small>
-
-                            </div>
-
-                        </div>
-
-
-                        <!-- =============================================
-                             INFORMACIÓN DOCENTE
-                        ============================================== -->
-
-                        <div
-                            class="col-12"
-                            id="infoDocente"
-                        >
-
-                            <div class="info-docente">
-
-                                <i class="fas fa-chalkboard-teacher me-2"></i>
-
-                                <strong>Cuenta de docente</strong>
-
-                                <br>
-
-                                <small>
-
-                                    El docente quedará vinculado
-                                    automáticamente con su cuenta
-                                    de usuario.
-
-                                </small>
-
-                            </div>
-
-                        </div>
+                        <small class="text-muted">
+                            La carrera solamente aplica para alumnos.
+                        </small>
 
                     </div>
 
 
-                    <!-- =================================================
-                         BOTONES
-                    ================================================== -->
+                    <!-- CONTRASEÑA -->
 
-                    <div class="d-flex flex-wrap gap-2 mt-4">
+                    <div class="col-md-6">
 
-                        <a
-                            href="list.php"
-                            class="btn btn-secondary"
+                        <label class="form-label">
+                            Contraseña *
+                        </label>
+
+                        <input
+                            type="password"
+                            name="password"
+                            class="form-control"
+                            minlength="6"
+                            required
                         >
-
-                            <i class="fas fa-arrow-left me-1"></i>
-
-                            Cancelar
-
-                        </a>
-
-
-                        <button
-                            type="submit"
-                            class="btn btn-primary"
-                            id="btnCrear"
-                        >
-
-                            <i class="fas fa-user-plus me-1"></i>
-
-                            Crear usuario
-
-                        </button>
 
                     </div>
 
-                </form>
 
-            </div>
+                    <!-- CONFIRMAR -->
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Confirmar contraseña *
+                        </label>
+
+                        <input
+                            type="password"
+                            name="confirm_password"
+                            class="form-control"
+                            minlength="6"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <!-- SEDE -->
+
+                <div class="info-sede">
+
+                    <strong>
+                        <i class="fas fa-map-marker-alt me-2"></i>
+                        Sede Danlí
+                    </strong>
+
+                    <div class="small mt-1">
+                        Este usuario será registrado exclusivamente
+                        en la sede Danlí.
+                    </div>
+
+                </div>
+
+
+                <!-- BOTONES -->
+
+                <div class="d-flex gap-2 mt-4">
+
+                    <a
+                        href="list.php"
+                        class="btn btn-secondary"
+                    >
+                        <i class="fas fa-arrow-left me-1"></i>
+                        Cancelar
+                    </a>
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+
+                        <i class="fas fa-user-plus me-1"></i>
+
+                        Crear usuario
+
+                    </button>
+
+                </div>
+
+            </form>
 
         </div>
 
@@ -1235,168 +768,38 @@ include '../includes/header.php';
 
 <script>
 
-// ============================================================
-// CONTROL DEL TIPO DE USUARIO
-// ============================================================
+function controlarCarrera() {
+
+    const tipo = document.getElementById('tipo');
+    const contenedor = document.getElementById('contenedorCarrera');
+    const carrera = document.getElementById('carrera_id');
+
+    if (!tipo) return;
+
+    if (tipo.value === 'alumno') {
+
+        contenedor.style.display = 'block';
+        carrera.disabled = false;
+
+    } else {
+
+        contenedor.style.display = 'none';
+        carrera.value = '';
+        carrera.disabled = true;
+
+    }
+}
 
 document.addEventListener(
     'DOMContentLoaded',
-    function () {
-
-        const tipo =
-            document.getElementById('tipo');
-
-        const contenedorCarrera =
-            document.getElementById(
-                'contenedorCarrera'
-            );
-
-        const carrera =
-            document.getElementById(
-                'carrera_id'
-            );
-
-        const infoAlumno =
-            document.getElementById(
-                'infoAlumno'
-            );
-
-        const infoDocente =
-            document.getElementById(
-                'infoDocente'
-            );
-
-
-        function actualizarFormulario() {
-
-            const valor =
-                tipo.value;
-
-
-            // ================================================
-            // OCULTAR INFORMACIÓN
-            // ================================================
-
-            infoAlumno.style.display =
-                'none';
-
-            infoDocente.style.display =
-                'none';
-
-
-            // ================================================
-            // ADMINISTRADOR
-            // ================================================
-
-            if (valor === 'admin') {
-
-                contenedorCarrera.style.display =
-                    'none';
-
-                carrera.required =
-                    false;
-
-                carrera.value =
-                    '';
-
-            }
-
-
-            // ================================================
-            // ALUMNO
-            // ================================================
-
-            else if (valor === 'alumno') {
-
-                contenedorCarrera.style.display =
-                    'block';
-
-                carrera.required =
-                    true;
-
-                infoAlumno.style.display =
-                    'block';
-            }
-
-
-            // ================================================
-            // DOCENTE
-            // ================================================
-
-            else if (valor === 'docente') {
-
-                contenedorCarrera.style.display =
-                    'none';
-
-                carrera.required =
-                    false;
-
-                carrera.value =
-                    '';
-
-                infoDocente.style.display =
-                    'block';
-
-            }
-
-
-            // ================================================
-            // SIN SELECCIÓN
-            // ================================================
-
-            else {
-
-                contenedorCarrera.style.display =
-                    'block';
-
-                carrera.required =
-                    false;
-            }
-        }
-
-
-        tipo.addEventListener(
-            'change',
-            actualizarFormulario
-        );
-
-
-        actualizarFormulario();
-
-    }
+    controlarCarrera
 );
 
-
-// ============================================================
-// EVITAR DOBLE ENVÍO
-// ============================================================
-
-document
-    .getElementById('formUsuario')
-    .addEventListener(
-        'submit',
-        function () {
-
-            const boton =
-                document.getElementById(
-                    'btnCrear'
-                );
-
-            boton.disabled =
-                true;
-
-            boton.innerHTML =
-                '<i class="fas fa-spinner fa-spin me-1"></i> ' +
-                'Creando usuario...';
-
-        }
-    );
+document.getElementById('tipo').addEventListener(
+    'change',
+    controlarCarrera
+);
 
 </script>
 
-
-<?php
-
-include '../includes/footer.php';
-
-?>
+<?php include '../includes/footer.php'; ?>
